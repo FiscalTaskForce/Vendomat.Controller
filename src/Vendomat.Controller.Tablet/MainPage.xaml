@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:domainEnums="clr-namespace:Vendomat.Controller.Domain.Enums;assembly=Vendomat.Controller.Domain"
+             xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
+             xmlns:models="clr-namespace:Vendomat.Controller.Tablet.Models"
+             xmlns:syncfusion="clr-namespace:Syncfusion.Maui.Inputs;assembly=Syncfusion.Maui.Inputs"
+             xmlns:viewModels="clr-namespace:Vendomat.Controller.Tablet.ViewModels"
+             x:Class="Vendomat.Controller.Tablet.MainPage"
+             x:Name="DashboardPage"
+             x:DataType="viewModels:DashboardViewModel">
+
+    <Grid Padding="16"
+          RowDefinitions="*,*"
+          RowSpacing="16">
+
+        <Border Grid.Row="0"
+                BackgroundColor="{StaticResource WarmBlue}">
+            <Grid RowDefinitions="Auto,*,Auto"
+                  Padding="20">
+                <Grid ColumnDefinitions="*,184">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding MachineName}"
+                               FontSize="28"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource MilkWhite}" />
+                        <Label Text="{localization:Translate DashboardSubtitle}"
+                               FontSize="14"
+                               TextColor="#E5EFF7" />
+                    </VerticalStackLayout>
+
+                    <Border Grid.Column="1"
+                            BackgroundColor="#26FFFFFF"
+                            Padding="8,2">
+                        <syncfusion:SfComboBox x:Name="TabletLanguageComboBox"
+                                               ItemsSource="{Binding AvailableLanguages}"
+                                               SelectedItem="{Binding SelectedLanguageOption}"
+                                               DisplayMemberPath="NativeName"
+                                               TextMemberPath="NativeName"
+                                               IsEditable="False"
+                                               MaxDropDownHeight="180"
+                                               DropDownItemHeight="56"
+                                               Background="Transparent"
+                                               Stroke="Transparent"
+                                               DropDownIconColor="{StaticResource MilkWhite}"
+                                               SelectedDropDownItemBackground="#2EFFFFFF">
+                            <syncfusion:SfComboBox.CustomView>
+                                <Grid InputTransparent="True"
+                                      ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="10"
+                                      Padding="6,0">
+                                    <Image Source="{Binding SelectedLanguageOption.FlagImagePath, TargetNullValue=ro.svg}"
+                                           WidthRequest="28"
+                                           HeightRequest="20"
+                                           Aspect="AspectFill"
+                                           VerticalOptions="Center" />
+                                    <Label Grid.Column="1"
+                                           Text="{Binding SelectedLanguageOption.NativeName, TargetNullValue=Română}"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource MilkWhite}"
+                                           VerticalTextAlignment="Center" />
+                                </Grid>
+                            </syncfusion:SfComboBox.CustomView>
+                            <syncfusion:SfComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="localization:LanguageOption">
+                                    <Grid Padding="10,8"
+                                          ColumnDefinitions="Auto,*"
+                                          ColumnSpacing="12">
+                                        <Image Source="{Binding FlagImagePath}"
+                                               WidthRequest="30"
+                                               HeightRequest="22"
+                                               Aspect="AspectFill"
+                                               VerticalOptions="Center" />
+                                        <VerticalStackLayout Grid.Column="1"
+                                                             Spacing="1"
+                                                             VerticalOptions="Center">
+                                            <Label Text="{Binding NativeName}"
+                                                   FontSize="14"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource Ink}" />
+                                            <Label Text="{Binding CountryCode}"
+                                                   FontSize="11"
+                                                   TextColor="{StaticResource MutedInk}" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </DataTemplate>
+                            </syncfusion:SfComboBox.ItemTemplate>
+                        </syncfusion:SfComboBox>
+                    </Border>
+                </Grid>
+
+                <CarouselView x:Name="PromoCarousel"
+                              Grid.Row="1"
+                              Margin="0,18,0,18"
+                              ItemsSource="{Binding PromoSlides}"
+                              Position="{Binding CurrentPromoIndex}">
+                    <CarouselView.ItemTemplate>
+                        <DataTemplate x:DataType="models:PromoSlide">
+                            <Border BackgroundColor="#22FFFFFF"
+                                    Padding="24">
+                                <Grid RowDefinitions="Auto,*,Auto">
+                                    <Label Text="{Binding Badge}"
+                                           FontSize="12"
+                                           TextColor="{StaticResource MilkWhite}"
+                                           BackgroundColor="#33FFFFFF"
+                                           Padding="10,4"
+                                           HorizontalOptions="Start" />
+                                    <VerticalStackLayout Grid.Row="1"
+                                                         VerticalOptions="Center"
+                                                         Spacing="12">
+                                        <Label Text="{Binding Title}"
+                                               FontSize="30"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource MilkWhite}" />
+                                        <Label Text="{Binding Subtitle}"
+                                               FontSize="16"
+                                               TextColor="#F5F7FA" />
+                                    </VerticalStackLayout>
+                                    <Label Grid.Row="2"
+                                           Text="{localization:Translate DashboardPromoPlaceholder}"
+                                           FontSize="13"
+                                           TextColor="#DDE8F0" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CarouselView.ItemTemplate>
+                </CarouselView>
+
+                <IndicatorView Grid.Row="2"
+                               ItemsSource="{Binding PromoSlides}"
+                               Position="{Binding CurrentPromoIndex}"
+                               IndicatorColor="#75FFFFFF"
+                               SelectedIndicatorColor="{StaticResource MilkWhite}"
+                               HorizontalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Padding="20">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*"
+                  RowSpacing="14">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="{localization:Translate DashboardStatusTitle}"
+                           FontSize="12"
+                           TextColor="{StaticResource MutedInk}" />
+                    <Label Text="{Binding StatusMessage}"
+                           FontSize="20"
+                           FontAttributes="Bold" />
+                </VerticalStackLayout>
+
+                <Grid Grid.Row="1"
+                      ColumnDefinitions="*,*"
+                      ColumnSpacing="12">
+                    <Border Padding="14"
+                            BackgroundColor="{StaticResource SkyBlue}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{localization:Translate DashboardStockTitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                            <Label Text="{Binding CurrentStockLiters, StringFormat='{}{0:0.##} L'}"
+                                   FontSize="22"
+                                   FontAttributes="Bold" />
+                            <Label Text="{Binding TankCapacityDisplay}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="1"
+                            Padding="14"
+                            BackgroundColor="#E9F3EC">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{localization:Translate DashboardTemperatureTitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                            <Label Text="{Binding TemperatureCelsius, StringFormat='{}{0:0.0} °C'}"
+                                   FontSize="22"
+                                   FontAttributes="Bold" />
+                            <Label Text="{localization:Translate DashboardTemperatureSubtitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="2"
+                      ColumnDefinitions="*,*"
+                      ColumnSpacing="12">
+                    <Border Padding="14">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{localization:Translate DashboardPriceTitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                            <Label Text="{Binding PricePerLiter, StringFormat='{}{0:0.00} RON'}"
+                                   FontSize="22"
+                                   FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="1"
+                            Padding="14">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{localization:Translate DashboardCreditTitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}" />
+                            <Label Text="{Binding CurrentCredit, StringFormat='{}{0:0.00} RON'}"
+                                   FontSize="22"
+                                   FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="3"
+                      ColumnDefinitions="*,*"
+                      ColumnSpacing="12">
+                    <Button Text="{localization:Translate DashboardPaymentCash}"
+                            Command="{Binding SelectCashCommand}"
+                            IsEnabled="{Binding CanUseCash}"
+                            BackgroundColor="{StaticResource MilkWhite}"
+                            TextColor="{StaticResource Ink}">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button"
+                                         Binding="{Binding SelectedPaymentMethod}"
+                                         Value="{x:Static domainEnums:PaymentMethod.Cash}">
+                                <Setter Property="BackgroundColor" Value="{StaticResource FarmGreen}" />
+                                <Setter Property="TextColor" Value="{StaticResource MilkWhite}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Grid.Column="1"
+                            Text="{localization:Translate DashboardPaymentCard}"
+                            Command="{Binding SelectCardCommand}"
+                            IsEnabled="{Binding CanUseCard}"
+                            BackgroundColor="{StaticResource MilkWhite}"
+                            TextColor="{StaticResource Ink}">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button"
+                                         Binding="{Binding SelectedPaymentMethod}"
+                                         Value="{x:Static domainEnums:PaymentMethod.Card}">
+                                <Setter Property="BackgroundColor" Value="{StaticResource FarmGreen}" />
+                                <Setter Property="TextColor" Value="{StaticResource MilkWhite}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </Grid>
+
+                <Grid Grid.Row="4"
+                      ColumnDefinitions="Auto,*,Auto"
+                      ColumnSpacing="12">
+                    <Button Text="-"
+                            WidthRequest="52"
+                            Command="{Binding DecreaseRequestedLitersCommand}"
+                            IsEnabled="{Binding CanAdjustLiters}"
+                            IsVisible="{Binding CanAdjustLiters}" />
+                    <Border Grid.Column="1"
+                            Padding="14">
+                        <VerticalStackLayout Spacing="4"
+                                             HorizontalOptions="Center">
+                            <Label Text="{localization:Translate DashboardRequestedLitersTitle}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}"
+                                   HorizontalTextAlignment="Center" />
+                            <Label Text="{Binding RequestedLiters, StringFormat='{}{0:0.##} L'}"
+                                   FontSize="24"
+                                   FontAttributes="Bold"
+                                   HorizontalTextAlignment="Center" />
+                            <Label Text="{Binding SelectedTotalDisplay}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource MutedInk}"
+                                   HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Button Grid.Column="2"
+                            Text="+"
+                            WidthRequest="52"
+                            Command="{Binding IncreaseRequestedLitersCommand}"
+                            IsEnabled="{Binding CanAdjustLiters}"
+                            IsVisible="{Binding CanAdjustLiters}" />
+                </Grid>
+
+                <VerticalStackLayout Grid.Row="5"
+                                     Spacing="12"
+                                     VerticalOptions="End">
+                    <Label Text="{Binding ContactDisplay}"
+                           FontSize="12"
+                           TextColor="{StaticResource MutedInk}" />
+                    <ActivityIndicator IsVisible="{Binding IsDispensing}"
+                                       IsRunning="{Binding IsDispensing}" />
+                    <ProgressBar Progress="{Binding DispenseProgress}" />
+                    <Button Text="{Binding StartButtonText}"
+                            Command="{Binding StartDispenseCommand}"
+                            IsEnabled="{Binding CanStartDispense}"
+                            HeightRequest="60" />
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
+
+        <Button x:Name="AdminHotspotButton"
+                Grid.RowSpan="2"
+                WidthRequest="56"
+                HeightRequest="56"
+                HorizontalOptions="Start"
+                VerticalOptions="Start"
+                Margin="6,6,0,0"
+                BackgroundColor="Transparent"
+                TextColor="Transparent"
+                BorderWidth="0"
+                CornerRadius="28"
+                Opacity="0"
+                Pressed="OnAdminHotspotPressed"
+                Released="OnAdminHotspotReleased"
+                Clicked="OnAdminHotspotClicked" />
+
+        <Grid x:Name="AdminPromptOverlay"
+              Grid.RowSpan="2"
+              IsVisible="False"
+              BackgroundColor="#8A0E1A23"
+              Padding="24"
+              InputTransparent="False">
+            <Grid.Resources>
+                <Style x:Key="AdminDigitButtonStyle" TargetType="Button">
+                    <Setter Property="HeightRequest" Value="82" />
+                    <Setter Property="FontSize" Value="28" />
+                    <Setter Property="FontAttributes" Value="Bold" />
+                </Style>
+                <Style x:Key="AdminSecondaryButtonStyle" TargetType="Button">
+                    <Setter Property="HeightRequest" Value="82" />
+                    <Setter Property="FontSize" Value="18" />
+                    <Setter Property="FontAttributes" Value="Bold" />
+                </Style>
+            </Grid.Resources>
+
+            <Border Padding="32"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="520">
+                <VerticalStackLayout Spacing="20">
+                    <Label Text="{localization:Translate DashboardAdminUnlockTitle}"
+                           FontSize="30"
+                           FontAttributes="Bold"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{localization:Translate DashboardAdminUnlockSubtitle}"
+                           FontSize="16"
+                           TextColor="{StaticResource MutedInk}"
+                           HorizontalTextAlignment="Center" />
+
+                    <Border Padding="20"
+                            BackgroundColor="{StaticResource SkyBlue}"
+                            Stroke="{StaticResource CardBorder}"
+                            StrokeThickness="1">
+                        <Label x:Name="AdminPasscodeDisplayLabel"
+                               Text="----"
+                               FontSize="40"
+                               FontAttributes="Bold"
+                               HorizontalTextAlignment="Center" />
+                    </Border>
+
+                    <Label x:Name="AdminPromptStatusLabel"
+                           Text="{localization:Translate DashboardAdminUnlockPlaceholder}"
+                           FontSize="15"
+                           HorizontalTextAlignment="Center"
+                           TextColor="{StaticResource MutedInk}" />
+
+                    <Grid ColumnDefinitions="*,*,*"
+                          RowDefinitions="Auto,Auto,Auto,Auto"
+                          ColumnSpacing="16"
+                          RowSpacing="16">
+                        <Button Text="1" Clicked="OnAdminDigitClicked" CommandParameter="1" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Column="1" Text="2" Clicked="OnAdminDigitClicked" CommandParameter="2" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Column="2" Text="3" Clicked="OnAdminDigitClicked" CommandParameter="3" Style="{StaticResource AdminDigitButtonStyle}" />
+
+                        <Button Grid.Row="1" Text="4" Clicked="OnAdminDigitClicked" CommandParameter="4" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Row="1" Grid.Column="1" Text="5" Clicked="OnAdminDigitClicked" CommandParameter="5" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Row="1" Grid.Column="2" Text="6" Clicked="OnAdminDigitClicked" CommandParameter="6" Style="{StaticResource AdminDigitButtonStyle}" />
+
+                        <Button Grid.Row="2" Text="7" Clicked="OnAdminDigitClicked" CommandParameter="7" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Row="2" Grid.Column="1" Text="8" Clicked="OnAdminDigitClicked" CommandParameter="8" Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Row="2" Grid.Column="2" Text="9" Clicked="OnAdminDigitClicked" CommandParameter="9" Style="{StaticResource AdminDigitButtonStyle}" />
+
+                        <Button Grid.Row="3"
+                                Text="{localization:Translate CommonClear}"
+                                Clicked="OnAdminClearClicked"
+                                Style="{StaticResource AdminSecondaryButtonStyle}"
+                                BackgroundColor="{StaticResource MilkWhite}"
+                                TextColor="{StaticResource Ink}" />
+                        <Button Grid.Row="3"
+                                Grid.Column="1"
+                                Text="0"
+                                Clicked="OnAdminDigitClicked"
+                                CommandParameter="0"
+                                Style="{StaticResource AdminDigitButtonStyle}" />
+                        <Button Grid.Row="3"
+                                Grid.Column="2"
+                                Text="{localization:Translate CommonDelete}"
+                                Clicked="OnAdminBackspaceClicked"
+                                Style="{StaticResource AdminSecondaryButtonStyle}"
+                                BackgroundColor="{StaticResource MilkWhite}"
+                                TextColor="{StaticResource Ink}" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="16">
+                        <Button Text="{localization:Translate CommonCancel}"
+                                Clicked="OnAdminCancelClicked"
+                                Style="{StaticResource AdminSecondaryButtonStyle}"
+                                BackgroundColor="{StaticResource MilkWhite}"
+                                TextColor="{StaticResource Ink}" />
+                        <Button Grid.Column="1"
+                                Text="{localization:Translate CommonConfirm}"
+                                Clicked="OnAdminConfirmClicked"
+                                Style="{StaticResource AdminSecondaryButtonStyle}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
+
+</ContentPage>

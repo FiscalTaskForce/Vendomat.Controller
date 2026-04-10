@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
+             xmlns:models="clr-namespace:Vendomat.Controller.Mobile.Models"
+             xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
+             x:Class="Vendomat.Controller.Mobile.Pages.MachineDetailPage"
+             Shell.NavBarIsVisible="False"
+             x:DataType="viewModels:MachineDetailViewModel">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16"
+                             Spacing="14">
+            <Grid HeightRequest="76"
+                  ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="12">
+                <Button Text="{localization:Translate CommonBack}"
+                        Clicked="OnBackClicked"
+                        Padding="16,10"
+                        VerticalOptions="Center" />
+                <VerticalStackLayout Grid.Column="1"
+                                     Spacing="2"
+                                     VerticalOptions="Center">
+                    <Label Text="{Binding MachineName}"
+                           FontSize="22"
+                           FontAttributes="Bold" />
+                    <Label Text="{Binding UpdatedAtText}"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+                <Button Grid.Column="2"
+                        Text="{localization:Translate CommonRefresh}"
+                        Command="{Binding RefreshCommand}" />
+            </Grid>
+
+            <Border Padding="16">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="{localization:Translate MobileDetailStatusTitle}"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Text="{Binding StatusText}"
+                           FontSize="22"
+                           FontAttributes="Bold" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Grid ColumnDefinitions="*,*"
+                  ColumnSpacing="12">
+                <Border Padding="16">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileDetailTemperatureTitle}"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray500}" />
+                        <Label Text="{Binding TemperatureText}"
+                               FontSize="20"
+                               FontAttributes="Bold" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="1"
+                        Padding="16">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileDetailStockTitle}"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray500}" />
+                        <Label Text="{Binding StockText}"
+                               FontSize="20"
+                               FontAttributes="Bold" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,*"
+                  ColumnSpacing="12">
+                <Border Padding="16">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileDetailPriceTitle}"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray500}" />
+                        <Label Text="{Binding PriceText}"
+                               FontSize="20"
+                               FontAttributes="Bold" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="1"
+                        Padding="16">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileDetailCreditTitle}"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray500}" />
+                        <Label Text="{Binding CreditText}"
+                               FontSize="20"
+                               FontAttributes="Bold" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <Border Padding="16">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto"
+                      ColumnDefinitions="Auto,*"
+                      ColumnSpacing="12"
+                      RowSpacing="8">
+                    <Label Text="{localization:Translate MobileDetailPaymentTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Column="1"
+                           Text="{Binding PaymentText}" />
+                    <Label Grid.Row="1"
+                           Text="{localization:Translate MobileDetailStateTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Row="1"
+                           Grid.Column="1"
+                           Text="{Binding ActivityText}" />
+                    <Label Grid.Row="2"
+                           Text="{localization:Translate MobileDetailContactTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Row="2"
+                           Grid.Column="1"
+                           Text="{Binding ContactText}" />
+                    <Label Grid.Row="3"
+                           Text="{localization:Translate MobileDetailApiBaseUrlTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Row="3"
+                           Grid.Column="1"
+                           Text="{Binding ApiBaseUrlText}"
+                           LineBreakMode="CharacterWrap" />
+                </Grid>
+            </Border>
+
+            <Border Padding="16">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="{localization:Translate MobileDetailRemoteCreditTitle}"
+                           FontSize="16"
+                           FontAttributes="Bold" />
+                    <Label Text="{localization:Translate MobileDetailRemoteCreditSubtitle}"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray500}" />
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="12">
+                        <Entry Text="{Binding RemoteCreditAmountText}"
+                               Keyboard="Numeric"
+                               Placeholder="10"
+                               HeightRequest="52" />
+                        <Button Grid.Column="1"
+                                Text="{localization:Translate MobileDetailRemoteCreditButton}"
+                                Command="{Binding AddRemoteCreditCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{localization:Translate MobileDetailSalesSectionTitle}"
+                           FontSize="16"
+                           FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="12">
+                        <Border Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailTodayRevenueTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding TodayRevenueText}"
+                                       FontSize="18"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding TodayLitersText}"
+                                       FontSize="12"
+                                       TextColor="{StaticResource Gray500}" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailTodaySalesCountTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding TodaySalesCountText}"
+                                       FontSize="18"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding LastSaleText}"
+                                       FontSize="12"
+                                       TextColor="{StaticResource Gray500}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="12">
+                        <Border Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailTotalRevenueTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding TotalRevenueText}"
+                                       FontSize="18"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding TotalLitersText}"
+                                       FontSize="12"
+                                       TextColor="{StaticResource Gray500}" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailTotalSalesCountTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding TotalSalesCountText}"
+                                       FontSize="18"
+                                       FontAttributes="Bold" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Label Text="{localization:Translate MobileDetailRecentSalesTitle}"
+                           FontSize="14"
+                           FontAttributes="Bold" />
+                    <CollectionView ItemsSource="{Binding RecentSales}"
+                                    IsVisible="{Binding HasSalesHistory}"
+                                    SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:DashboardListItem">
+                                <Border Margin="0,0,0,8"
+                                        Padding="12"
+                                        BackgroundColor="#FFF7EF"
+                                        Stroke="#E7DDCF"
+                                        StrokeThickness="1">
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          ColumnSpacing="10">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontAttributes="Bold" />
+                                            <Label Text="{Binding Subtitle}"
+                                                   FontSize="12"
+                                                   TextColor="{StaticResource Gray500}" />
+                                        </VerticalStackLayout>
+                                        <Label Grid.Column="1"
+                                               Text="{Binding Value}"
+                                               FontSize="12"
+                                               VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Label Text="{localization:Translate MobileDetailNoSalesHistory}"
+                           IsVisible="{Binding HasSalesHistory, Converter={StaticResource InverseBooleanConverter}}"
+                           FontSize="13"
+                           TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{localization:Translate MobileDetailSanitationSectionTitle}"
+                           FontSize="16"
+                           FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="12">
+                        <Border Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailLastSanitationTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding LastSanitationText}"
+                                       FontSize="16"
+                                       FontAttributes="Bold" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Padding="12"
+                                BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{localization:Translate MobileDetailSanitationCountTitle}"
+                                       FontSize="11"
+                                       TextColor="{StaticResource Gray500}" />
+                                <Label Text="{Binding SanitationCountText}"
+                                       FontSize="16"
+                                       FontAttributes="Bold" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="12">
+                        <Button Text="{localization:Translate MobileDetailRunContinuousCleaning}"
+                                Command="{Binding RunContinuousCleaningCommand}" />
+                        <Button Grid.Column="1"
+                                Text="{localization:Translate MobileDetailRunPulsedCleaning}"
+                                Command="{Binding RunPulsedCleaningCommand}" />
+                    </Grid>
+
+                    <Label Text="{localization:Translate MobileDetailRecentSanitationTitle}"
+                           FontSize="14"
+                           FontAttributes="Bold" />
+                    <CollectionView ItemsSource="{Binding RecentSanitations}"
+                                    IsVisible="{Binding HasSanitationHistory}"
+                                    SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:DashboardListItem">
+                                <Border Margin="0,0,0,8"
+                                        Padding="12"
+                                        BackgroundColor="#F2F8F5"
+                                        Stroke="#D8E7DE"
+                                        StrokeThickness="1">
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          ColumnSpacing="10">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontAttributes="Bold" />
+                                            <Label Text="{Binding Subtitle}"
+                                                   FontSize="12"
+                                                   TextColor="{StaticResource Gray500}" />
+                                        </VerticalStackLayout>
+                                        <Label Grid.Column="1"
+                                               Text="{Binding Value}"
+                                               FontSize="12"
+                                               LineBreakMode="TailTruncation"
+                                               VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Label Text="{localization:Translate MobileDetailNoSanitationHistory}"
+                           IsVisible="{Binding HasSanitationHistory, Converter={StaticResource InverseBooleanConverter}}"
+                           FontSize="13"
+                           TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Button Text="{localization:Translate MobileDetailOpenSettings}"
+                    Command="{Binding OpenSettingsCommand}"
+                    HeightRequest="52" />
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

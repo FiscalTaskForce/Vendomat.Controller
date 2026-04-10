@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:domainModels="clr-namespace:Vendomat.Controller.Domain.Models;assembly=Vendomat.Controller.Domain"
+             xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
+             xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
+             x:Class="Vendomat.Controller.Mobile.Pages.MachineSettingsPage"
+             Shell.NavBarIsVisible="False"
+             x:DataType="viewModels:MachineSettingsViewModel">
+
+    <ContentPage.Resources>
+        <Style x:Key="SettingsCardStyle" TargetType="Border">
+            <Setter Property="Padding" Value="18" />
+            <Setter Property="Stroke" Value="#E7DDCF" />
+            <Setter Property="StrokeThickness" Value="1" />
+            <Setter Property="BackgroundColor" Value="#FFFDF9" />
+            <Setter Property="StrokeShape">
+                <Setter.Value>
+                    <RoundRectangle CornerRadius="22" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsCardTitleStyle" TargetType="Label">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="TextColor" Value="#17242E" />
+        </Style>
+
+        <Style x:Key="SettingsCardDescriptionStyle" TargetType="Label">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="TextColor" Value="#6E6E6E" />
+        </Style>
+
+        <Style x:Key="SettingsFieldLabelStyle" TargetType="Label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="TextColor" Value="#6E6E6E" />
+        </Style>
+
+        <Style x:Key="SettingsEntryStyle" TargetType="Entry">
+            <Setter Property="BackgroundColor" Value="#EEF6FB" />
+            <Setter Property="MinimumHeightRequest" Value="52" />
+            <Setter Property="ClearButtonVisibility" Value="WhileEditing" />
+        </Style>
+
+        <Style x:Key="SettingsTabButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="18,12" />
+            <Setter Property="HeightRequest" Value="48" />
+            <Setter Property="CornerRadius" Value="24" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="BackgroundColor" Value="#EEF6FB" />
+            <Setter Property="TextColor" Value="#17242E" />
+        </Style>
+
+        <Style x:Key="SettingsAdjustButtonStyle" TargetType="Button">
+            <Setter Property="WidthRequest" Value="56" />
+            <Setter Property="HeightRequest" Value="52" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid Padding="16"
+          RowDefinitions="Auto,Auto,*,Auto"
+          RowSpacing="16">
+
+        <Grid ColumnDefinitions="Auto,*"
+              ColumnSpacing="14">
+            <Button Text="{localization:Translate CommonBack}"
+                    Padding="14,10"
+                    Clicked="OnBackClicked" />
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="2"
+                                 VerticalOptions="Center">
+                <Label Text="{localization:Translate MobileSettingsTitle}"
+                       FontSize="28"
+                       FontAttributes="Bold" />
+                <Label Text="{Binding StatusMessage}"
+                       FontSize="12"
+                       TextColor="#6E6E6E" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <ScrollView Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalScrollBarVisibility="Never">
+            <HorizontalStackLayout Spacing="10">
+                <Button Text="{localization:Translate SettingsSalesTab}"
+                        Command="{Binding ShowSalesTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsSalesTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <Button Text="{localization:Translate SettingsGeneralSection}"
+                        Command="{Binding ShowGeneralTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsGeneralTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <Button Text="{localization:Translate SettingsPaymentSection}"
+                        Command="{Binding ShowPaymentsTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsPaymentsTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <Button Text="{localization:Translate SettingsValidatorSection}"
+                        Command="{Binding ShowValidatorTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsValidatorTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <Button Text="{localization:Translate SettingsEsp32Section}"
+                        Command="{Binding ShowEsp32TabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsEsp32TabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <Button Text="{localization:Translate SettingsCleaningSection}"
+                        Command="{Binding ShowCleaningTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsCleaningTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </HorizontalStackLayout>
+        </ScrollView>
+
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout Padding="0,0,0,12"
+                                 Spacing="16">
+
+                <VerticalStackLayout IsVisible="{Binding IsSalesTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsSalesCardTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsSalesCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsMachineNamePlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding MachineName}"
+                                       Placeholder="{localization:Translate SettingsMachineNamePlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsPricePlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10">
+                                    <Button Text="-"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding DecrementNumericSettingCommand}"
+                                            CommandParameter="PricePerLiter" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding PricePerLiter}"
+                                           Keyboard="Numeric"
+                                           HorizontalTextAlignment="Center"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                    <Button Grid.Column="2"
+                                            Text="+"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding IncrementNumericSettingCommand}"
+                                            CommandParameter="PricePerLiter" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsPulsesPlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10">
+                                    <Button Text="-"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding DecrementNumericSettingCommand}"
+                                            CommandParameter="PulsesPerLiter" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding PulsesPerLiter}"
+                                           Keyboard="Numeric"
+                                           HorizontalTextAlignment="Center"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                    <Button Grid.Column="2"
+                                            Text="+"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding IncrementNumericSettingCommand}"
+                                            CommandParameter="PulsesPerLiter" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsCurrentStockPlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10">
+                                    <Button Text="-"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding DecrementNumericSettingCommand}"
+                                            CommandParameter="CurrentStockLiters" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding CurrentStockLiters}"
+                                           Keyboard="Numeric"
+                                           HorizontalTextAlignment="Center"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                    <Button Grid.Column="2"
+                                            Text="+"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding IncrementNumericSettingCommand}"
+                                            CommandParameter="CurrentStockLiters" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsTankCapacityPlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10">
+                                    <Button Text="-"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding DecrementNumericSettingCommand}"
+                                            CommandParameter="TankCapacityLiters" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding TankCapacityLiters}"
+                                           Keyboard="Numeric"
+                                           HorizontalTextAlignment="Center"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                    <Button Grid.Column="2"
+                                            Text="+"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding IncrementNumericSettingCommand}"
+                                            CommandParameter="TankCapacityLiters" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsLowStockPlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10">
+                                    <Button Text="-"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding DecrementNumericSettingCommand}"
+                                            CommandParameter="LowStockThresholdLiters" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding LowStockThresholdLiters}"
+                                           Keyboard="Numeric"
+                                           HorizontalTextAlignment="Center"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                    <Button Grid.Column="2"
+                                            Text="+"
+                                            Style="{StaticResource SettingsAdjustButtonStyle}"
+                                            Command="{Binding IncrementNumericSettingCommand}"
+                                            CommandParameter="LowStockThresholdLiters" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsGeneralTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsAdminSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsAdminCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+                            <Label Text="{localization:Translate SettingsAdminPasscodeHint}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{localization:Translate SettingsAdminPasscodePlaceholder}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding NewAdminPasscode}"
+                                           Keyboard="Numeric"
+                                           IsPassword="True"
+                                           Placeholder="{localization:Translate SettingsAdminPasscodePlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Spacing="6">
+                                    <Label Text="{localization:Translate SettingsAdminPasscodeConfirmPlaceholder}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding ConfirmAdminPasscode}"
+                                           Keyboard="Numeric"
+                                           IsPassword="True"
+                                           Placeholder="{localization:Translate SettingsAdminPasscodeConfirmPlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsPairingSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsPairingCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+                            <Label Text="{localization:Translate SettingsPairingSecurityHint}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsMachineIdLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding MachineIdentifier}"
+                                       IsReadOnly="True"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsLocalApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding LocalApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsPublicApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding PublicApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsPublicApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsCloudApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding CloudApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsCloudApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsPaymentsTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsPaymentCardTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsPaymentCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding CashPaymentEnabled}" />
+                                        <Label Text="{localization:Translate SettingsCashPayment}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding CardPaymentEnabled}" />
+                                        <Label Text="{localization:Translate SettingsCardPayment}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsContactCardTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsContactCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsContactPhonePlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding ContactPhone}"
+                                       Keyboard="Telephone"
+                                       Placeholder="{localization:Translate SettingsContactPhonePlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsContactEmailPlaceholder}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding ContactEmail}"
+                                       Keyboard="Email"
+                                       Placeholder="{localization:Translate SettingsContactEmailPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsValidatorTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsValidatorSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsValidatorCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding BillValidatorEnabled}" />
+                                        <Label Text="{localization:Translate SettingsValidatorEnabled}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding BillValidatorEscrowMode}" />
+                                        <Label Text="{localization:Translate SettingsValidatorEscrow}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{localization:Translate SettingsBillPortLabel}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding BillValidatorPortName}"
+                                           Placeholder="{localization:Translate SettingsBillPortPlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Spacing="6">
+                                    <Label Text="{localization:Translate SettingsBillBaudLabel}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding BillValidatorBaudRate}"
+                                           Keyboard="Numeric"
+                                           Placeholder="{localization:Translate SettingsBillBaudPlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsValidatorChannelsTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsValidatorChannelsDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <VerticalStackLayout Spacing="10"
+                                                 BindableLayout.ItemsSource="{Binding CashChannels}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="domainModels:CashChannelSetting">
+                                        <Border Padding="14"
+                                                BackgroundColor="#EEF6FB"
+                                                StrokeThickness="0">
+                                            <Grid ColumnDefinitions="*,Auto,Auto"
+                                                  ColumnSpacing="12">
+                                                <Label Text="{Binding Label}"
+                                                       VerticalOptions="Center"
+                                                       FontAttributes="Bold" />
+                                                <Label Grid.Column="1"
+                                                       Text="{Binding Amount, StringFormat='{}{0:0.##} RON'}"
+                                                       VerticalOptions="Center"
+                                                       TextColor="#6E6E6E" />
+                                                <Switch Grid.Column="2"
+                                                        IsToggled="{Binding IsEnabled}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsEsp32TabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsEsp32Section}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsEsp32CardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding Esp32Enabled}" />
+                                        <Label Text="{localization:Translate SettingsEsp32Enabled}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <HorizontalStackLayout Spacing="10">
+                                        <Switch IsToggled="{Binding Esp32AutoDiscover}" />
+                                        <Label Text="{localization:Translate SettingsEsp32AutoDiscover}"
+                                               VerticalOptions="Center"
+                                               FontAttributes="Bold" />
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{localization:Translate SettingsEsp32PortLabel}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding Esp32PortName}"
+                                           Placeholder="{localization:Translate SettingsEsp32PortPlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Spacing="6">
+                                    <Label Text="{localization:Translate SettingsEsp32BaudLabel}"
+                                           Style="{StaticResource SettingsFieldLabelStyle}" />
+                                    <Entry Text="{Binding Esp32BaudRate}"
+                                           Keyboard="Numeric"
+                                           Placeholder="{localization:Translate SettingsEsp32BaudPlaceholder}"
+                                           Style="{StaticResource SettingsEntryStyle}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsCleaningTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsCleaningSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsCleaningCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="16"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="12">
+                                        <Label Text="{localization:Translate SettingsContinuousCleaning}"
+                                               FontAttributes="Bold"
+                                               FontSize="16" />
+                                        <Label Text="{localization:Translate SettingsContinuousCleaningDescription}"
+                                               Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                        <Button Text="{localization:Translate SettingsContinuousCleaning}"
+                                                Command="{Binding RunContinuousCleaningCommand}" />
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="16"
+                                        BackgroundColor="#FFF2DF"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="12">
+                                        <Label Text="{localization:Translate SettingsPulsedCleaning}"
+                                               FontAttributes="Bold"
+                                               FontSize="16" />
+                                        <Label Text="{localization:Translate SettingsPulsedCleaningDescription}"
+                                               Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                        <Button Text="{localization:Translate SettingsPulsedCleaning}"
+                                                Command="{Binding RunPulsedCleaningCommand}"
+                                                BackgroundColor="#F3B255" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <Border Grid.Row="3"
+                Style="{StaticResource SettingsCardStyle}"
+                Padding="16">
+            <Button Text="{localization:Translate SettingsSaveButton}"
+                    Command="{Binding SaveCommand}"
+                    HeightRequest="58" />
+        </Border>
+    </Grid>
+
+</ContentPage>

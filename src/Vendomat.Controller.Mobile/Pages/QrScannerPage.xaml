@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
+             xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
+             x:Class="Vendomat.Controller.Mobile.Pages.QrScannerPage"
+             Shell.NavBarIsVisible="False"
+             x:DataType="viewModels:QrScannerViewModel">
+
+    <ScrollView>
+        <Grid Padding="16"
+              RowDefinitions="Auto,Auto,Auto,Auto"
+              RowSpacing="12">
+            <Grid HeightRequest="76"
+                  ColumnDefinitions="Auto,*"
+                  ColumnSpacing="12">
+                <Button Text="{localization:Translate CommonBack}"
+                        Clicked="OnBackClicked"
+                        Padding="16,10"
+                        VerticalOptions="Center" />
+                <VerticalStackLayout Grid.Column="1"
+                                     x:Name="HeaderStack"
+                                     Spacing="2"
+                                     VerticalOptions="Center">
+                    <Label Text="{localization:Translate MobileScannerTitle}"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{localization:Translate MobileScannerSubtitle}"
+                           FontSize="12"
+                           LineBreakMode="TailTruncation"
+                           TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Stroke="#D9CBB8"
+                    StrokeThickness="1"
+                    Padding="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="26" />
+                </Border.StrokeShape>
+                <Grid x:Name="ScannerHost"
+                      HeightRequest="360">
+                    <Label x:Name="ScannerUnavailableLabel"
+                           IsVisible="False"
+                           Text="{localization:Translate MobileScannerManualModeHint}"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center"
+                           TextColor="{StaticResource Gray500}"
+                           Margin="18" />
+                </Grid>
+            </Border>
+
+            <Label Grid.Row="2"
+                   Text="{Binding StatusMessage}"
+                   FontSize="13"
+                   TextColor="{StaticResource Gray500}" />
+        </Grid>
+    </ScrollView>
+
+</ContentPage>
