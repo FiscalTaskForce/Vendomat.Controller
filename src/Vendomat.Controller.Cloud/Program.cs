@@ -1,9 +1,12 @@
+using System.Net.WebSockets;
 using Vendomat.Controller.Cloud.Data;
+using Vendomat.Controller.Cloud.Services;
 using Vendomat.Controller.Application.Contracts;
 using Vendomat.Controller.Domain.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<CloudStore>();
+builder.Services.AddSingleton<CloudTunnelBroker>();
 
 var app = builder.Build();
 
@@ -12,6 +15,8 @@ if (!string.IsNullOrWhiteSpace(configuredPathBase))
 {
     app.UsePathBase(configuredPathBase);
 }
+
+app.UseWebSockets();
 
 app.Use(async (context, next) =>
 {
@@ -26,6 +31,71 @@ app.Use(async (context, next) =>
         {
             error = ex.Message,
         });
+    }
+});
+
+app.Map("/ws/machine", async context =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        return;
+    }
+
+    var machineToken = context.Request.Headers["X-Vendomat-Machine-Token"].ToString();
+    if (!Guid.TryParse(context.Request.Headers["X-Vendomat-Machine-Id"].ToString(), out var machineId)
+        || string.IsNullOrWhiteSpace(machineToken))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "unauthorized" });
+        return;
+    }
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    try
+    {
+        await context.RequestServices
+            .GetRequiredService<CloudTunnelBroker>()
+            .RunMachineSessionAsync(socket, machineId, machineToken, context.RequestAborted);
+    }
+    catch (InvalidOperationException ex)
+    {
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, ex.Message, context.RequestAborted);
+        }
+    }
+});
+
+app.Map("/ws/companion", async context =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        return;
+    }
+
+    var token = GetCompanionToken(context.Request);
+    if (token is null)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "unauthorized" });
+        return;
+    }
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    try
+    {
+        await context.RequestServices
+            .GetRequiredService<CloudTunnelBroker>()
+            .RunCompanionSessionAsync(socket, token, context.RequestAborted);
+    }
+    catch (InvalidOperationException ex)
+    {
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, ex.Message, context.RequestAborted);
+        }
     }
 });
 

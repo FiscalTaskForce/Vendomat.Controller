@@ -1,4 +1,6 @@
-using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Android.Util;
 using Vendomat.Controller.Application.Contracts;
 using Vendomat.Controller.Application.Interfaces;
@@ -14,10 +16,14 @@ public sealed class CloudBridgeService(
     private const string LogTag = "VendomatCloud";
     private static readonly TimeSpan IdleSyncInterval = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan BusySyncInterval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan WatcherSyncInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DashboardSyncInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(5);
 
-    private readonly SemaphoreSlim _syncGate = new(1, 1);
-    private readonly ConcurrentDictionary<Guid, CloudCommandCompletionRequest> _completedCommands = new();
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private Task? _loopTask;
     private CancellationTokenSource? _loopCts;
     private DateTimeOffset _lastDashboardSyncUtc = DateTimeOffset.MinValue;
@@ -41,8 +47,6 @@ public sealed class CloudBridgeService(
         }
 
         var settings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
-        await SyncInternalAsync(settings, cancellationToken);
-
         var request = new CloudPairingUpsertRequest
         {
             MachineId = settings.MachineId,
@@ -60,22 +64,37 @@ public sealed class CloudBridgeService(
         Log.Info(LogTag, $"Published pairing session for machine {settings.MachineId:N}");
     }
 
-    public async Task SyncNowAsync(CancellationToken cancellationToken = default)
-    {
-        var settings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
-        await SyncInternalAsync(settings, cancellationToken);
-    }
+    public Task SyncNowAsync(CancellationToken cancellationToken = default) =>
+        PublishSnapshotAsync(forceDashboard: true, cancellationToken);
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var delay = IdleSyncInterval;
-
             try
             {
                 var settings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
-                delay = await SyncInternalAsync(settings, cancellationToken);
+                if (string.IsNullOrWhiteSpace(settings.CloudApiBaseUrl) || string.IsNullOrWhiteSpace(settings.CloudMachineToken))
+                {
+                    await Task.Delay(IdleSyncInterval, cancellationToken);
+                    continue;
+                }
+
+                using var socket = await ConnectAsync(settings, cancellationToken);
+                Log.Info(LogTag, $"Machine tunnel connected for {settings.MachineId:N}");
+                _lastDashboardSyncUtc = DateTimeOffset.MinValue;
+
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var receiveTask = ReceiveLoopAsync(socket, linkedCts.Token);
+                var syncTask = RunSyncLoopAsync(socket, settings, linkedCts.Token);
+
+                await Task.WhenAny(receiveTask, syncTask);
+                linkedCts.Cancel();
+
+                await AwaitSilentlyAsync(receiveTask);
+                await AwaitSilentlyAsync(syncTask);
+
+                await CloseSocketAsync(socket, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -83,12 +102,12 @@ public sealed class CloudBridgeService(
             }
             catch (Exception ex)
             {
-                Log.Warn(LogTag, $"Cloud sync failed: {ex.Message}");
+                Log.Warn(LogTag, $"Machine tunnel failed: {ex.Message}");
             }
 
             try
             {
-                await Task.Delay(delay, cancellationToken);
+                await Task.Delay(ReconnectDelay, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -97,70 +116,153 @@ public sealed class CloudBridgeService(
         }
     }
 
-    private async Task<TimeSpan> SyncInternalAsync(MachineSettings settings, CancellationToken cancellationToken)
+    private async Task RunSyncLoopAsync(
+        ClientWebSocket socket,
+        MachineSettings initialSettings,
+        CancellationToken cancellationToken)
     {
+        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        {
+            var settings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
+            if (HasConnectionIdentityChanged(initialSettings, settings))
+            {
+                return;
+            }
+
+            var delay = await PublishSnapshotAsync(socket, settings, forceDashboard: false, cancellationToken);
+            await Task.Delay(delay, cancellationToken);
+        }
+    }
+
+    private async Task<TimeSpan> PublishSnapshotAsync(
+        ClientWebSocket socket,
+        MachineSettings settings,
+        bool forceDashboard,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await machineRuntimeService.GetStatusAsync(cancellationToken);
+        var includeDashboard = forceDashboard
+            || DateTimeOffset.UtcNow - _lastDashboardSyncUtc >= DashboardSyncInterval;
+
+        var envelope = new CloudTunnelEnvelope
+        {
+            MessageType = CloudTunnelMessageTypes.Sync,
+            MachineId = settings.MachineId,
+            Action = CloudTunnelActions.SyncState,
+            Payload = SerializePayload(await BuildSyncRequestAsync(settings, snapshot, includeDashboard, cancellationToken)),
+        };
+
+        await SendAsync(socket, envelope, cancellationToken);
+        if (includeDashboard)
+        {
+            _lastDashboardSyncUtc = DateTimeOffset.UtcNow;
+        }
+
+        return snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning
+            ? BusySyncInterval
+            : IdleSyncInterval;
+    }
+
+    private async Task PublishSnapshotAsync(bool forceDashboard, CancellationToken cancellationToken)
+    {
+        var settings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(settings.CloudApiBaseUrl) || string.IsNullOrWhiteSpace(settings.CloudMachineToken))
         {
-            return IdleSyncInterval;
+            return;
         }
 
-        await _syncGate.WaitAsync(cancellationToken);
+        using var socket = await ConnectAsync(settings, cancellationToken);
+        await PublishSnapshotAsync(socket, settings, forceDashboard, cancellationToken);
+        await CloseSocketAsync(socket, cancellationToken);
+    }
+
+    private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        {
+            var message = await ReceiveAsync(socket, cancellationToken);
+            switch (message.MessageType)
+            {
+                case CloudTunnelMessageTypes.Request:
+                    var response = await HandleRequestAsync(message, cancellationToken);
+                    await SendAsync(socket, response, cancellationToken);
+                    break;
+
+                case CloudTunnelMessageTypes.Ping:
+                    await SendAsync(socket, new CloudTunnelEnvelope
+                    {
+                        MessageType = CloudTunnelMessageTypes.Pong,
+                        MachineId = message.MachineId,
+                    }, cancellationToken);
+                    break;
+            }
+        }
+    }
+
+    private async Task<CloudTunnelEnvelope> HandleRequestAsync(
+        CloudTunnelEnvelope request,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            var snapshot = await machineRuntimeService.GetStatusAsync(cancellationToken);
-            var includeDashboard = DateTimeOffset.UtcNow - _lastDashboardSyncUtc >= TimeSpan.FromSeconds(10);
-            var syncResult = await cloudBrokerClient.SyncMachineAsync(
-                await BuildSyncRequestAsync(settings, snapshot, includeDashboard, cancellationToken),
-                cancellationToken);
-            if (includeDashboard)
+            return request.Action switch
             {
-                _lastDashboardSyncUtc = DateTimeOffset.UtcNow;
-            }
+                CloudTunnelActions.GetStatus => BuildSuccess(
+                    request,
+                    await machineRuntimeService.GetStatusAsync(cancellationToken)),
 
-            foreach (var completed in _completedCommands.Values.ToArray())
-            {
-                try
-                {
-                    await cloudBrokerClient.CompleteCommandAsync(completed, settings.CloudApiBaseUrl, cancellationToken);
-                    _completedCommands.TryRemove(completed.CommandId, out _);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn(LogTag, $"Cloud command completion retry failed for {completed.CommandId}: {ex.Message}");
-                }
-            }
+                CloudTunnelActions.GetDashboard => BuildSuccess(
+                    request,
+                    await machineRuntimeService.GetDashboardAsync(cancellationToken)),
 
-            var processedCommand = false;
-            foreach (var command in syncResult.PendingCommands)
-            {
-                await ExecuteCommandAsync(command, settings.CloudApiBaseUrl, settings.MachineId, settings.CloudMachineToken, cancellationToken);
-                processedCommand = true;
-            }
+                CloudTunnelActions.GetSettings => BuildSuccess(
+                    request,
+                    await machineRuntimeService.GetSettingsAsync(cancellationToken)),
 
-            if (processedCommand)
-            {
-                var refreshedSettings = await machineRuntimeService.GetSettingsAsync(cancellationToken);
-                var refreshedSnapshot = await machineRuntimeService.GetStatusAsync(cancellationToken);
-                syncResult.HasActiveWatcher = await cloudBrokerClient.PublishSnapshotAsync(
-                    await BuildSyncRequestAsync(refreshedSettings, refreshedSnapshot, includeDashboard: true, cancellationToken),
-                    cancellationToken);
-                _lastDashboardSyncUtc = DateTimeOffset.UtcNow;
-                settings = refreshedSettings;
-            }
+                CloudTunnelActions.SaveSettings => BuildSuccess(
+                    request,
+                    await SaveSettingsAsync(request.Payload, cancellationToken)),
 
-            if (syncResult.HasActiveWatcher)
-            {
-                return WatcherSyncInterval;
-            }
+                CloudTunnelActions.RunSanitation => BuildSuccess(
+                    request,
+                    await RunSanitationAsync(request.Payload, cancellationToken)),
 
-            return snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning
-                ? BusySyncInterval
-                : IdleSyncInterval;
+                CloudTunnelActions.AddCredit => BuildSuccess(
+                    request,
+                    await AddCreditAsync(request.Payload, cancellationToken)),
+
+                _ => BuildError(request, $"Unsupported tunnel action '{request.Action}'."),
+            };
         }
-        finally
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _syncGate.Release();
+            return BuildError(request, ex.Message);
         }
+    }
+
+    private async Task<MachineSettings> SaveSettingsAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var settings = DeserializePayload<MachineSettings>(payload);
+        await machineRuntimeService.SaveSettingsAsync(settings, cancellationToken);
+        return await machineRuntimeService.GetSettingsAsync(cancellationToken);
+    }
+
+    private async Task<CloudTunnelAcceptedResponse> RunSanitationAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = DeserializePayload<SanitationRequest>(payload);
+        await machineRuntimeService.RunSanitationAsync(request, cancellationToken);
+        return new CloudTunnelAcceptedResponse();
+    }
+
+    private async Task<CloudTunnelRemoteCreditResponse> AddCreditAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = DeserializePayload<RemoteCreditRequest>(payload);
+        await machineRuntimeService.AddRemoteCreditAsync(request.Amount, cancellationToken);
+
+        return new CloudTunnelRemoteCreditResponse
+        {
+            Snapshot = await machineRuntimeService.GetStatusAsync(cancellationToken),
+        };
     }
 
     private async Task<CloudMachineSyncRequest> BuildSyncRequestAsync(
@@ -185,62 +287,142 @@ public sealed class CloudBridgeService(
         };
     }
 
-    private async Task ExecuteCommandAsync(
-        CloudCommandEnvelope command,
-        string cloudApiBaseUrl,
-        Guid machineId,
-        string machineToken,
-        CancellationToken cancellationToken)
+    private async Task<ClientWebSocket> ConnectAsync(MachineSettings settings, CancellationToken cancellationToken)
     {
-        if (_completedCommands.TryGetValue(command.CommandId, out var completed))
-        {
-            await cloudBrokerClient.CompleteCommandAsync(completed, cloudApiBaseUrl, cancellationToken);
-            _completedCommands.TryRemove(command.CommandId, out _);
-            return;
-        }
+        var socket = new ClientWebSocket();
+        socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+        socket.Options.SetRequestHeader("X-Vendomat-Machine-Id", settings.MachineId.ToString("N"));
+        socket.Options.SetRequestHeader("X-Vendomat-Machine-Token", settings.CloudMachineToken.Trim());
+        await socket.ConnectAsync(BuildWebSocketUri(settings.CloudApiBaseUrl, "ws/machine"), cancellationToken);
+        return socket;
+    }
 
-        var completion = new CloudCommandCompletionRequest
-        {
-            MachineId = machineId,
-            MachineToken = machineToken,
-            CommandId = command.CommandId,
-            Success = true,
-        };
+    private async Task SendAsync(ClientWebSocket socket, CloudTunnelEnvelope envelope, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(envelope, _jsonOptions);
+        var buffer = Encoding.UTF8.GetBytes(json);
 
+        await _sendLock.WaitAsync(cancellationToken);
         try
         {
-            switch (command.CommandType)
+            await socket.SendAsync(buffer, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    private async Task<CloudTunnelEnvelope> ReceiveAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var json = await ReceiveTextAsync(socket, cancellationToken);
+        return JsonSerializer.Deserialize<CloudTunnelEnvelope>(json, _jsonOptions)
+            ?? throw new InvalidOperationException("Machine tunnel message is invalid.");
+    }
+
+    private static async Task<string> ReceiveTextAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[4096];
+        using var stream = new MemoryStream();
+
+        while (true)
+        {
+            var result = await socket.ReceiveAsync(buffer, cancellationToken);
+            if (result.MessageType == WebSocketMessageType.Close)
             {
-                case CloudCommandTypes.SaveSettings when command.Settings is not null:
-                    await machineRuntimeService.SaveSettingsAsync(command.Settings, cancellationToken);
-                    break;
+                throw new WebSocketException("Machine tunnel closed.");
+            }
 
-                case CloudCommandTypes.RunSanitation when command.SanitationCommand is not null:
-                    await machineRuntimeService.RunSanitationAsync(new SanitationRequest
-                    {
-                        Mode = command.SanitationCommand.Mode,
-                        Duration = command.SanitationCommand.Duration,
-                        PulseOn = command.SanitationCommand.PulseOn,
-                        PulseOff = command.SanitationCommand.PulseOff,
-                    }, cancellationToken);
-                    break;
-
-                case CloudCommandTypes.AddCredit when command.CreditCommand is not null:
-                    await machineRuntimeService.AddRemoteCreditAsync(command.CreditCommand.Amount, cancellationToken);
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Unknown cloud command type '{command.CommandType}'.");
+            stream.Write(buffer, 0, result.Count);
+            if (result.EndOfMessage)
+            {
+                break;
             }
         }
-        catch (Exception ex)
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private T DeserializePayload<T>(JsonElement payload) =>
+        payload.Deserialize<T>(_jsonOptions)
+        ?? throw new InvalidOperationException("Tunnel payload is invalid.");
+
+    private JsonElement SerializePayload(object? payload) =>
+        payload is null
+            ? JsonSerializer.SerializeToElement(new { })
+            : JsonSerializer.SerializeToElement(payload, _jsonOptions);
+
+    private static bool HasConnectionIdentityChanged(MachineSettings expected, MachineSettings actual) =>
+        expected.MachineId != actual.MachineId
+        || !string.Equals(NormalizeCloudBaseUrl(expected.CloudApiBaseUrl), NormalizeCloudBaseUrl(actual.CloudApiBaseUrl), StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(expected.CloudMachineToken?.Trim(), actual.CloudMachineToken?.Trim(), StringComparison.Ordinal);
+
+    private static string NormalizeCloudBaseUrl(string? value) =>
+        value?.Trim().TrimEnd('/') ?? string.Empty;
+
+    private static Uri BuildWebSocketUri(string cloudApiBaseUrl, string relativePath)
+    {
+        var normalized = cloudApiBaseUrl?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
         {
-            completion.Success = false;
-            completion.ErrorMessage = ex.Message;
+            throw new InvalidOperationException("Cloud API base URL is missing.");
         }
 
-        _completedCommands[completion.CommandId] = completion;
-        await cloudBrokerClient.CompleteCommandAsync(completion, cloudApiBaseUrl, cancellationToken);
-        _completedCommands.TryRemove(completion.CommandId, out _);
+        if (!normalized.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !normalized.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = $"https://{normalized}";
+        }
+
+        var baseUri = new Uri(normalized.TrimEnd('/') + "/", UriKind.Absolute);
+        var builder = new UriBuilder(baseUri)
+        {
+            Scheme = string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ? "wss" : "ws",
+        };
+
+        return new Uri(builder.Uri, relativePath);
+    }
+
+    private static CloudTunnelEnvelope BuildSuccess(CloudTunnelEnvelope request, object? payload) =>
+        new()
+        {
+            MessageType = CloudTunnelMessageTypes.Response,
+            RequestId = request.RequestId,
+            MachineId = request.MachineId,
+            Action = request.Action,
+            Success = true,
+            Payload = payload is null
+                ? JsonSerializer.SerializeToElement(new { })
+                : JsonSerializer.SerializeToElement(payload),
+        };
+
+    private static CloudTunnelEnvelope BuildError(CloudTunnelEnvelope request, string errorMessage) =>
+        new()
+        {
+            MessageType = CloudTunnelMessageTypes.Response,
+            RequestId = request.RequestId,
+            MachineId = request.MachineId,
+            Action = request.Action,
+            Success = false,
+            ErrorMessage = errorMessage,
+        };
+
+    private static async Task AwaitSilentlyAsync(Task task)
+    {
+        try
+        {
+            await task;
+        }
+        catch
+        {
+        }
+    }
+
+    private static async Task CloseSocketAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Machine tunnel closed.", cancellationToken);
+        }
     }
 }

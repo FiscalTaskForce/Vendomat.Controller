@@ -245,6 +245,45 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task ValidateMachineConnectionAsync(Guid machineId, string machineToken, CancellationToken cancellationToken = default)
+    {
+        ValidateMachineRequest(machineId, machineToken);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+        await EnsureMachineTokenAsync(connection, transaction, machineId, machineToken, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<List<CloudCommandEnvelope>> GetPendingCommandsAsync(
+        Guid machineId,
+        string machineToken,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateMachineRequest(machineId, machineToken);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+        await EnsureMachineTokenAsync(connection, transaction, machineId, machineToken, cancellationToken);
+        await DeleteOldCompletedCommandsAsync(connection, transaction, cancellationToken);
+        var commands = await LoadPendingCommandsAsync(connection, transaction, machineId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return commands;
+    }
+
+    public async Task<CloudCompanionSession> ResolveCompanionSessionAsync(
+        string companionAccessToken,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedToken = CompanionAccessTokenSecurity.Normalize(companionAccessToken);
+        var machine = await ResolveMachineByCompanionTokenAsync(normalizedToken, cancellationToken);
+        return new CloudCompanionSession(
+            machine.MachineId,
+            machine.MachineName,
+            machine.CloudApiBaseUrl,
+            normalizedToken);
+    }
+
     public async Task<PairingClaimResult> ClaimPairingAsync(
         PairingClaimRequest request,
         string currentCloudApiBaseUrl,
@@ -798,6 +837,12 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         DateTimeOffset.TryParse(value, out var dateTimeOffset)
             ? dateTimeOffset
             : DateTimeOffset.UtcNow;
+
+    public sealed record CloudCompanionSession(
+        Guid MachineId,
+        string MachineName,
+        string CloudApiBaseUrl,
+        string CompanionAccessToken);
 
     private sealed record ResolvedMachine(
         Guid MachineId,
