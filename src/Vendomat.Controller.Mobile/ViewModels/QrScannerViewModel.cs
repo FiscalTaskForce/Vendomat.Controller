@@ -157,24 +157,29 @@ public partial class QrScannerViewModel(
                 return false;
             }
 
-            var (claimApiBaseUrl, claimResult) = await remoteClient.ClaimPairingAsync(payload);
-            Debug.WriteLine($"[ManualPairing] Claim ok via {claimApiBaseUrl} MachineName={claimResult.MachineName}");
+            var claimResult = await remoteClient.ClaimPairingAsync(payload);
+            Debug.WriteLine($"[ManualPairing] Claim ok via {claimResult.ApiBaseUrl} MachineName={claimResult.Payload.MachineName}");
             var record = new PairedMachineRecord
             {
-                MachineId = claimResult.MachineId,
-                MachineName = claimResult.MachineName,
-                ApiBaseUrl = claimApiBaseUrl,
-                LocalApiBaseUrl = claimResult.LocalApiBaseUrl,
-                PublicApiBaseUrl = claimResult.PublicApiBaseUrl,
-                CloudApiBaseUrl = claimResult.CloudApiBaseUrl,
-                CompanionAccessToken = claimResult.CompanionAccessToken,
+                MachineId = claimResult.Payload.MachineId,
+                MachineName = claimResult.Payload.MachineName,
+                ApiBaseUrl = claimResult.ApiBaseUrl,
+                LocalApiBaseUrl = claimResult.Payload.LocalApiBaseUrl,
+                LocalSecureApiBaseUrl = claimResult.Payload.LocalSecureApiBaseUrl,
+                LocalCertificateFingerprint = claimResult.Payload.LocalCertificateFingerprint,
+                PublicApiBaseUrl = claimResult.Payload.PublicApiBaseUrl,
+                CloudApiBaseUrl = claimResult.Payload.CloudApiBaseUrl,
+                CompanionAccessToken = claimResult.Payload.CompanionAccessToken,
                 PairingCode = payload.PairingCode,
                 AddedAtUtc = DateTimeOffset.UtcNow,
+                PreferredConnectionPreference = MachineConnectionPreference.Auto,
             };
+            record.RememberSuccessfulConnection(claimResult.ApiBaseUrl, claimResult.ConnectionMode);
 
-            var (statusApiBaseUrl, snapshot) = await remoteClient.GetStatusAsync(record);
-            Debug.WriteLine($"[ManualPairing] Status ok via {statusApiBaseUrl} Stock={snapshot.Settings.CurrentStockLiters}");
-            record.ApiBaseUrl = statusApiBaseUrl;
+            var statusResult = await remoteClient.GetStatusAsync(record);
+            var snapshot = statusResult.Payload;
+            Debug.WriteLine($"[ManualPairing] Status ok via {statusResult.ApiBaseUrl} Stock={snapshot.Settings.CurrentStockLiters}");
+            record.RememberSuccessfulConnection(statusResult.ApiBaseUrl, statusResult.ConnectionMode);
             record.LastSeenOnline = true;
             record.LastSeenUtc = snapshot.GeneratedAtUtc;
             record.LastKnownStockLiters = snapshot.Settings.CurrentStockLiters;
@@ -224,7 +229,8 @@ public partial class QrScannerViewModel(
     }
 
     private static bool HasAnyEndpoint(PairingQrPayload payload) =>
-        !string.IsNullOrWhiteSpace(payload.LocalApiBaseUrl)
+        !string.IsNullOrWhiteSpace(payload.LocalSecureApiBaseUrl)
+        || !string.IsNullOrWhiteSpace(payload.LocalApiBaseUrl)
         || !string.IsNullOrWhiteSpace(payload.PublicApiBaseUrl)
         || !string.IsNullOrWhiteSpace(payload.CloudApiBaseUrl);
 

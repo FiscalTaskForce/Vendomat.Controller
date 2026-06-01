@@ -22,4 +22,14 @@ public sealed class SqliteLogRepository(LocalDatabaseService database) : ILogRep
 
         return rows.Select(x => x.ToDomain()).ToList();
     }
+
+    public async Task<IReadOnlyList<DeviceLogEntry>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        await database.InitializeAsync();
+        var rows = await database.Connection.Table<DeviceLogEntryEntity>()
+            .OrderByDescending(x => x.CreatedAtUtcTicks)
+            .ToListAsync();
+
+        return rows.Select(x => x.ToDomain()).ToList();
+    }
 }

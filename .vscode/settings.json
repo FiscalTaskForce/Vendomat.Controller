@@ -1,0 +1,7 @@
+{
+  "C_Cpp.default.configurationProvider": "platformio.platformio-ide",
+  "files.exclude": {
+    "**/.pio": true
+  },
+  "terminal.integrated.cwd": "${workspaceFolder}/src/Vendomat.Controller.Esp32"
+}

@@ -52,6 +52,12 @@ public partial class MachineDetailViewModel(
     private string apiBaseUrlText = "-";
 
     [ObservableProperty]
+    private string connectionModeText = string.Empty;
+
+    [ObservableProperty]
+    private string connectionStrategyText = string.Empty;
+
+    [ObservableProperty]
     private string updatedAtText = string.Empty;
 
     [ObservableProperty]
@@ -111,6 +117,7 @@ public partial class MachineDetailViewModel(
 
         MachineName = _record.MachineName;
         ApiBaseUrlText = _record.ApiBaseUrl;
+        RefreshConnectionDetails();
         await RefreshDashboardAsync();
         _ = RunRefreshLoopAsync(_refreshLoopCts.Token);
     }
@@ -160,8 +167,9 @@ public partial class MachineDetailViewModel(
         try
         {
             var result = await remoteClient.AddRemoteCreditAsync(_record, Math.Round(amount, 2));
-            _record.ApiBaseUrl = result.ApiBaseUrl;
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
             ApiBaseUrlText = result.ApiBaseUrl;
+            RefreshConnectionDetails();
 
             if (result.Snapshot is not null)
             {
@@ -239,12 +247,13 @@ public partial class MachineDetailViewModel(
 
         try
         {
-            var (apiBaseUrl, snapshot) = await remoteClient.GetStatusAsync(_record);
-            _record.ApiBaseUrl = apiBaseUrl;
-            ApiBaseUrlText = apiBaseUrl;
-            _snapshot = snapshot;
-            ApplySnapshot(snapshot);
-            await UpdateRecordAsync(snapshot);
+            var result = await remoteClient.GetStatusAsync(_record);
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
+            ApiBaseUrlText = result.ApiBaseUrl;
+            _snapshot = result.Payload;
+            ApplySnapshot(result.Payload);
+            RefreshConnectionDetails();
+            await UpdateRecordAsync(result.Payload);
         }
         catch
         {
@@ -261,13 +270,14 @@ public partial class MachineDetailViewModel(
 
         try
         {
-            var (apiBaseUrl, dashboard) = await remoteClient.GetDashboardAsync(_record);
-            _record.ApiBaseUrl = apiBaseUrl;
-            ApiBaseUrlText = apiBaseUrl;
-            _dashboard = dashboard;
-            _snapshot = dashboard.Status;
-            ApplyDashboard(dashboard);
-            await UpdateRecordAsync(dashboard.Status);
+            var result = await remoteClient.GetDashboardAsync(_record);
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
+            ApiBaseUrlText = result.ApiBaseUrl;
+            _dashboard = result.Payload;
+            _snapshot = result.Payload.Status;
+            ApplyDashboard(result.Payload);
+            RefreshConnectionDetails();
+            await UpdateRecordAsync(result.Payload.Status);
         }
         catch
         {
@@ -282,14 +292,16 @@ public partial class MachineDetailViewModel(
             return;
         }
 
-        _record.ApiBaseUrl = await remoteClient.RunSanitationAsync(_record, new Application.Contracts.SanitationRequest
+        var result = await remoteClient.RunSanitationAsync(_record, new Application.Contracts.SanitationRequest
         {
             Mode = mode,
             Duration = duration,
             PulseOn = pulseOn,
             PulseOff = pulseOff,
         });
-        ApiBaseUrlText = _record.ApiBaseUrl;
+        _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
+        ApiBaseUrlText = result.ApiBaseUrl;
+        RefreshConnectionDetails();
 
         await RefreshDashboardAsync();
     }
@@ -395,6 +407,8 @@ public partial class MachineDetailViewModel(
         {
             ApplySnapshot(_snapshot);
         }
+
+        RefreshConnectionDetails();
     }
 
     private async Task RunRefreshLoopAsync(CancellationToken cancellationToken)
@@ -433,6 +447,41 @@ public partial class MachineDetailViewModel(
     private string ResolveSanitationModeText(SanitationMode mode) => mode == SanitationMode.Pulsed
         ? T(nameof(AppLanguageStrings.MobileDetailSanitationPulsed))
         : T(nameof(AppLanguageStrings.MobileDetailSanitationContinuous));
+
+    private void RefreshConnectionDetails()
+    {
+        if (_record is null)
+        {
+            ConnectionModeText = T(nameof(AppLanguageStrings.MobileConnectionActiveUnknown));
+            ConnectionStrategyText = T(nameof(AppLanguageStrings.MobileConnectionEndpointMissing));
+            return;
+        }
+
+        var activeMode = _record.LastConnectionMode == MachineConnectionMode.Unknown
+            ? ConnectionStrategyResolver.InferMode(_record, _record.ApiBaseUrl)
+            : _record.LastConnectionMode;
+
+        ConnectionModeText = activeMode switch
+        {
+            MachineConnectionMode.LocalNetwork => T(nameof(AppLanguageStrings.MobileConnectionActiveLocal)),
+            MachineConnectionMode.DirectInternet => T(nameof(AppLanguageStrings.MobileConnectionActiveDirect)),
+            MachineConnectionMode.CloudBridge => T(nameof(AppLanguageStrings.MobileConnectionActiveBridge)),
+            _ => T(nameof(AppLanguageStrings.MobileConnectionActiveUnknown)),
+        };
+
+        var localAvailable = ConnectionStrategyResolver.IsSameLocalNetwork(_record.LocalApiBaseUrl);
+        ConnectionStrategyText = string.Join(
+            " -> ",
+            ConnectionStrategyResolver
+                .GetAttemptOrder(_record.PreferredConnectionPreference, localAvailable)
+                .Select(mode => mode switch
+                {
+                    MachineConnectionMode.LocalNetwork => T(nameof(AppLanguageStrings.MobileConnectionActiveLocal)),
+                    MachineConnectionMode.DirectInternet => T(nameof(AppLanguageStrings.MobileConnectionActiveDirect)),
+                    MachineConnectionMode.CloudBridge => T(nameof(AppLanguageStrings.MobileConnectionActiveBridge)),
+                    _ => T(nameof(AppLanguageStrings.MobileConnectionActiveUnknown)),
+                }));
+    }
 
     private string T(string key) => languageService.GetText(key);
 }

@@ -95,7 +95,7 @@
             </Grid>
 
             <Border Padding="16">
-                <Grid RowDefinitions="Auto,Auto,Auto,Auto"
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
                       ColumnDefinitions="Auto,*"
                       ColumnSpacing="12"
                       RowSpacing="8">
@@ -122,6 +122,19 @@
                            Grid.Column="1"
                            Text="{Binding ApiBaseUrlText}"
                            LineBreakMode="CharacterWrap" />
+                    <Label Grid.Row="4"
+                           Text="{localization:Translate MobileConnectionActiveModeTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Row="4"
+                           Grid.Column="1"
+                           Text="{Binding ConnectionModeText}" />
+                    <Label Grid.Row="5"
+                           Text="{localization:Translate MobileConnectionFallbackTitle}"
+                           TextColor="{StaticResource Gray500}" />
+                    <Label Grid.Row="5"
+                           Grid.Column="1"
+                           Text="{Binding ConnectionStrategyText}"
+                           LineBreakMode="WordWrap" />
                 </Grid>
             </Border>
 

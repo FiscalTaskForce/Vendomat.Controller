@@ -5,6 +5,7 @@
              xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
              xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
              x:Class="Vendomat.Controller.Mobile.Pages.MachineSettingsPage"
+             x:Name="SettingsPageRoot"
              Shell.NavBarIsVisible="False"
              x:DataType="viewModels:MachineSettingsViewModel">
 
@@ -88,6 +89,19 @@
                     Orientation="Horizontal"
                     HorizontalScrollBarVisibility="Never">
             <HorizontalStackLayout Spacing="10">
+                <Button Text="{localization:Translate MobileConnectionSectionTitle}"
+                        Command="{Binding ShowConnectionTabCommand}"
+                        Style="{StaticResource SettingsTabButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button"
+                                     Binding="{Binding IsConnectionTabSelected}"
+                                     Value="True">
+                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
                 <Button Text="{localization:Translate SettingsSalesTab}"
                         Command="{Binding ShowSalesTabCommand}"
                         Style="{StaticResource SettingsTabButtonStyle}">
@@ -171,6 +185,149 @@
         <ScrollView Grid.Row="2">
             <VerticalStackLayout Padding="0,0,0,12"
                                  Spacing="16">
+
+                <VerticalStackLayout IsVisible="{Binding IsConnectionTabSelected}"
+                                     Spacing="16">
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate MobileConnectionSectionTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate MobileConnectionSectionSubtitle}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="14"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="{localization:Translate MobileConnectionActiveModeTitle}"
+                                               Style="{StaticResource SettingsFieldLabelStyle}" />
+                                        <Label Text="{Binding ActiveConnectionModeTitle}"
+                                               FontSize="16"
+                                               FontAttributes="Bold" />
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="14"
+                                        BackgroundColor="#F2F8F5"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="{localization:Translate MobileConnectionFallbackTitle}"
+                                               Style="{StaticResource SettingsFieldLabelStyle}" />
+                                        <Label Text="{Binding ConnectionAvailabilityText}"
+                                               FontSize="13"
+                                               TextColor="#355468" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate MobileConnectionActiveEndpointTitle}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Label Text="{Binding ActiveConnectionEndpoint}"
+                                       FontSize="13"
+                                       LineBreakMode="CharacterWrap" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate MobileConnectionFallbackTitle}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Label Text="{Binding ConnectionFallbackText}"
+                                       FontSize="13"
+                                       LineBreakMode="WordWrap" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate MobileConnectionStrategyTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+
+                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding ConnectionModeOptions}"
+                                                 Spacing="12">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="viewModels:ConnectionModeOptionViewModel">
+                                        <Border Padding="16"
+                                                BackgroundColor="#F8FBFD"
+                                                Stroke="#D8E3EC"
+                                                StrokeThickness="1">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="18" />
+                                            </Border.StrokeShape>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border"
+                                                             Binding="{Binding IsSelected}"
+                                                             Value="True">
+                                                    <Setter Property="BackgroundColor" Value="#E7F4EC" />
+                                                    <Setter Property="Stroke" Value="#1C6B4A" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Source={x:Reference SettingsPageRoot}, Path=BindingContext.SelectConnectionModeCommand}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+
+                                            <VerticalStackLayout Spacing="6">
+                                                <Label Text="{Binding Title}"
+                                                       FontSize="16"
+                                                       FontAttributes="Bold" />
+                                                <Label Text="{Binding Description}"
+                                                       FontSize="13"
+                                                       TextColor="#5A6B78" />
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsPairingSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsPairingCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+                            <Label Text="{localization:Translate SettingsPairingSecurityHint}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsMachineIdLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding MachineIdentifier}"
+                                       IsReadOnly="True"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsLocalApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding LocalApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsPublicApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding PublicApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsPublicApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{localization:Translate SettingsCloudApiBaseUrlLabel}"
+                                       Style="{StaticResource SettingsFieldLabelStyle}" />
+                                <Entry Text="{Binding CloudApiBaseUrl}"
+                                       Placeholder="{localization:Translate SettingsCloudApiBaseUrlPlaceholder}"
+                                       Style="{StaticResource SettingsEntryStyle}" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
 
                 <VerticalStackLayout IsVisible="{Binding IsSalesTabSelected}"
                                      Spacing="16">
@@ -338,48 +495,6 @@
                         </VerticalStackLayout>
                     </Border>
 
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <VerticalStackLayout Spacing="16">
-                            <Label Text="{localization:Translate SettingsPairingSection}"
-                                   Style="{StaticResource SettingsCardTitleStyle}" />
-                            <Label Text="{localization:Translate SettingsPairingCardDescription}"
-                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
-                            <Label Text="{localization:Translate SettingsPairingSecurityHint}"
-                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
-
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="{localization:Translate SettingsMachineIdLabel}"
-                                       Style="{StaticResource SettingsFieldLabelStyle}" />
-                                <Entry Text="{Binding MachineIdentifier}"
-                                       IsReadOnly="True"
-                                       Style="{StaticResource SettingsEntryStyle}" />
-                            </VerticalStackLayout>
-
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="{localization:Translate SettingsLocalApiBaseUrlLabel}"
-                                       Style="{StaticResource SettingsFieldLabelStyle}" />
-                                <Entry Text="{Binding LocalApiBaseUrl}"
-                                       Placeholder="{localization:Translate SettingsApiBaseUrlPlaceholder}"
-                                       Style="{StaticResource SettingsEntryStyle}" />
-                            </VerticalStackLayout>
-
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="{localization:Translate SettingsPublicApiBaseUrlLabel}"
-                                       Style="{StaticResource SettingsFieldLabelStyle}" />
-                                <Entry Text="{Binding PublicApiBaseUrl}"
-                                       Placeholder="{localization:Translate SettingsPublicApiBaseUrlPlaceholder}"
-                                       Style="{StaticResource SettingsEntryStyle}" />
-                            </VerticalStackLayout>
-
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="{localization:Translate SettingsCloudApiBaseUrlLabel}"
-                                       Style="{StaticResource SettingsFieldLabelStyle}" />
-                                <Entry Text="{Binding CloudApiBaseUrl}"
-                                       Placeholder="{localization:Translate SettingsCloudApiBaseUrlPlaceholder}"
-                                       Style="{StaticResource SettingsEntryStyle}" />
-                            </VerticalStackLayout>
-                        </VerticalStackLayout>
-                    </Border>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout IsVisible="{Binding IsPaymentsTabSelected}"

@@ -1,6 +1,7 @@
 using System.IO.Ports;
 using System.Text;
 using System.Text.Json;
+using Vendomat.Controller.Application.Contracts;
 using Vendomat.Controller.Application.Interfaces;
 using Vendomat.Controller.Domain.Enums;
 using Vendomat.Controller.Domain.Models;
@@ -112,6 +113,32 @@ public sealed class Esp32SerialGateway : IEsp32Gateway
             DurationSeconds = Math.Max(0, (int)Math.Round(duration.TotalSeconds)),
             PulseOnMilliseconds = Math.Max(0, (int)Math.Round(pulseOn.TotalMilliseconds)),
             PulseOffMilliseconds = Math.Max(0, (int)Math.Round(pulseOff.TotalMilliseconds)),
+        };
+
+        return WritePayloadAsync(payload, cancellationToken);
+    }
+
+    public Task SendFirmwareUpdateAsync(Esp32FirmwareUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        var firmwareUrl = request.FirmwareUrl?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(firmwareUrl))
+        {
+            throw new InvalidOperationException("URL-ul firmware-ului ESP32 este obligatoriu.");
+        }
+
+        var payload = new
+        {
+            Type = 20,
+            MsgId = request.CommandId?.ToString("N") ?? Guid.NewGuid().ToString("N"),
+            Url = firmwareUrl,
+            WifiSsid = request.WifiSsid?.Trim() ?? string.Empty,
+            WifiPassword = request.WifiPassword ?? string.Empty,
+            ExpectedMd5 = request.ExpectedMd5?.Trim() ?? string.Empty,
         };
 
         return WritePayloadAsync(payload, cancellationToken);

@@ -348,6 +348,121 @@
 
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsUpdatesSection}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="{localization:Translate SettingsUpdatesCardDescription}"
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Border Padding="16"
+                                        BackgroundColor="{StaticResource SkyBlue}"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="8">
+                                        <Label Text="{localization:Translate SettingsUpdatesControlTitle}"
+                                               FontAttributes="Bold"
+                                               FontSize="16" />
+                                        <Label Text="{Binding ControlAppUpdateAvailabilityText}"
+                                               TextColor="{StaticResource FarmGreen}"
+                                               FontAttributes="Bold" />
+                                        <Label Text="{Binding ControlAppVersionDisplay}"
+                                               FontSize="12"
+                                               TextColor="{StaticResource MutedInk}" />
+                                        <Label Text="{localization:Translate SettingsUpdatesControlDescription}"
+                                               Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Padding="16"
+                                        BackgroundColor="#FFF2DF"
+                                        StrokeThickness="0">
+                                    <VerticalStackLayout Spacing="8">
+                                        <Label Text="{localization:Translate SettingsUpdatesEsp32Title}"
+                                               FontAttributes="Bold"
+                                               FontSize="16" />
+                                        <Label Text="{Binding Esp32UpdateAvailabilityText}"
+                                               TextColor="{StaticResource FarmGreen}"
+                                               FontAttributes="Bold" />
+                                        <Label Text="{localization:Translate SettingsUpdatesEsp32Description}"
+                                               Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Grid ColumnDefinitions="*,Auto,Auto"
+                                  ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="4">
+                                    <Label Text="Companion pairing"
+                                           Style="{StaticResource SettingsCardTitleStyle}" />
+                                    <Label Text="Sesiuni active pair-uite prin cloud."
+                                           Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1"
+                                        Text="Refresh"
+                                        Command="{Binding RefreshCompanionSessionsCommand}" />
+                                <Button Grid.Column="2"
+                                        Text="Revoke all"
+                                        Command="{Binding RevokeAllCompanionsCommand}"
+                                        BackgroundColor="{StaticResource AccentAmber}" />
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="10"
+                                                 BindableLayout.ItemsSource="{Binding CompanionSessions}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="domainModels:CloudCompanionSessionInfo">
+                                        <Border Padding="14"
+                                                BackgroundColor="{StaticResource SkyBlue}"
+                                                StrokeThickness="0">
+                                            <Grid ColumnDefinitions="*,Auto"
+                                                  ColumnSpacing="12">
+                                                <VerticalStackLayout Spacing="2">
+                                                    <Label Text="{Binding CompanionTokenPrefix}"
+                                                           FontAttributes="Bold" />
+                                                    <Label Text="{Binding IssuedAtUtc, StringFormat='Issued: {0:G}'}"
+                                                           FontSize="12"
+                                                           TextColor="{StaticResource MutedInk}" />
+                                                    <Label Text="{Binding LastUsedUtc, StringFormat='Last used: {0:G}'}"
+                                                           FontSize="12"
+                                                           TextColor="{StaticResource MutedInk}" />
+                                                </VerticalStackLayout>
+                                                <Button Grid.Column="1"
+                                                        Text="Revoke"
+                                                        Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RevokeCompanionCommand}"
+                                                        CommandParameter="{Binding .}"
+                                                        VerticalOptions="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
+                            <Label Text="Backup si export"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Label Text="Export JSON + CSV si restaurare din ultimul backup local."
+                                   Style="{StaticResource SettingsCardDescriptionStyle}" />
+                            <Grid ColumnDefinitions="*,*"
+                                  ColumnSpacing="12">
+                                <Button Text="Export backup"
+                                        Command="{Binding ExportOperationalBackupCommand}" />
+                                <Button Grid.Column="1"
+                                        Text="Restore latest"
+                                        Command="{Binding RestoreLatestBackupCommand}"
+                                        BackgroundColor="{StaticResource AccentAmber}" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
                             <Label Text="{localization:Translate SettingsPairingSection}"
                                    Style="{StaticResource SettingsCardTitleStyle}" />
                             <Label Text="{localization:Translate SettingsPairingCardDescription}"
@@ -511,6 +626,22 @@
                                     </HorizontalStackLayout>
                                 </Border>
                             </Grid>
+
+                            <Border Padding="14"
+                                    BackgroundColor="#FFF2DF"
+                                    StrokeThickness="0">
+                                <HorizontalStackLayout Spacing="10">
+                                    <Switch IsToggled="{Binding DemoModeEnabled}" />
+                                    <VerticalStackLayout Spacing="2"
+                                                         VerticalOptions="Center">
+                                        <Label Text="{localization:Translate SettingsRuntimeDemoMode}"
+                                               FontAttributes="Bold" />
+                                        <Label Text="{localization:Translate SettingsRuntimeDemoModeHint}"
+                                               FontSize="12"
+                                               TextColor="{StaticResource MutedInk}" />
+                                    </VerticalStackLayout>
+                                </HorizontalStackLayout>
+                            </Border>
 
                             <Grid ColumnDefinitions="*,*"
                                   ColumnSpacing="12">

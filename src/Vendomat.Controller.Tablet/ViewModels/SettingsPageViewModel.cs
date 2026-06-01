@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using QRCoder;
 using Vendomat.Controller.Application.Contracts;
@@ -17,6 +18,7 @@ namespace Vendomat.Controller.Tablet.ViewModels;
 public partial class SettingsPageViewModel(
     IMachineRuntimeService machineRuntimeService,
     CloudBridgeService cloudBridgeService,
+    OperationalBackupService operationalBackupService,
     LanguageService languageService) : ObservableObject
 {
     private const string SalesTabKey = "sales";
@@ -79,6 +81,9 @@ public partial class SettingsPageViewModel(
     private bool esp32AutoDiscover;
 
     [ObservableProperty]
+    private bool demoModeEnabled;
+
+    [ObservableProperty]
     private string contactPhone = string.Empty;
 
     [ObservableProperty]
@@ -120,6 +125,12 @@ public partial class SettingsPageViewModel(
     [ObservableProperty]
     private ObservableCollection<CashChannelSetting> cashChannels = [];
 
+    [ObservableProperty]
+    private ObservableCollection<CloudCompanionSessionInfo> companionSessions = [];
+
+    [ObservableProperty]
+    private string controlAppVersion = string.Empty;
+
     public bool IsSalesTabSelected => SelectedTab == SalesTabKey;
 
     public bool IsGeneralTabSelected => SelectedTab == GeneralTabKey;
@@ -135,6 +146,14 @@ public partial class SettingsPageViewModel(
     public bool HasPairingQr => PairingQrImage is not null;
 
     public bool CanShowPairingPopup => HasPairingQr;
+
+    public string ControlAppUpdateAvailabilityText => T(nameof(AppLanguageStrings.SettingsUpdatesAvailableStatus));
+
+    public string Esp32UpdateAvailabilityText => T(nameof(AppLanguageStrings.SettingsUpdatesAvailableStatus));
+
+    public string ControlAppVersionDisplay => string.Format(
+        T(nameof(AppLanguageStrings.SettingsUpdatesControlVersionFormat)),
+        string.IsNullOrWhiteSpace(ControlAppVersion) ? "n/a" : ControlAppVersion);
 
     public string PairingCodeDisplay => string.IsNullOrWhiteSpace(PairingCode)
         ? string.Empty
@@ -177,12 +196,14 @@ public partial class SettingsPageViewModel(
         Esp32PortName = settings.Esp32PortName;
         Esp32BaudRate = settings.Esp32BaudRate;
         Esp32AutoDiscover = settings.Esp32AutoDiscover;
+        DemoModeEnabled = settings.RuntimeMode == RuntimeMode.Demo;
         ContactPhone = settings.ContactPhone;
         ContactEmail = settings.ContactEmail;
         LocalApiBaseUrl = settings.LocalApiBaseUrl;
         PublicApiBaseUrl = settings.PublicApiBaseUrl;
         CloudApiBaseUrl = settings.CloudApiBaseUrl;
         MachineIdentifier = settings.MachineId.ToString("N").ToUpperInvariant();
+        ControlAppVersion = BuildControlAppVersion();
         CashChannels = new ObservableCollection<CashChannelSetting>(
             settings.CashChannels.Select(x => new CashChannelSetting
             {
@@ -191,6 +212,8 @@ public partial class SettingsPageViewModel(
                 Amount = x.Amount,
                 IsEnabled = x.IsEnabled,
             }));
+
+        await RefreshCompanionSessionsCoreAsync(settings);
 
         SetStatus(nameof(AppLanguageStrings.SettingsReadyStatus));
     }
@@ -240,6 +263,7 @@ public partial class SettingsPageViewModel(
         existing.Esp32PortName = string.IsNullOrWhiteSpace(Esp32PortName) ? "/dev/ttyS3" : Esp32PortName.Trim();
         existing.Esp32BaudRate = Esp32BaudRate <= 0 ? 115200 : Esp32BaudRate;
         existing.Esp32AutoDiscover = Esp32AutoDiscover;
+        existing.RuntimeMode = DemoModeEnabled ? RuntimeMode.Demo : RuntimeMode.Production;
         existing.ContactPhone = ContactPhone;
         existing.ContactEmail = ContactEmail;
         existing.LocalApiBaseUrl = NormalizeApiBaseUrl(LocalApiBaseUrl, "http://vendomat.local:1326");
@@ -328,6 +352,87 @@ public partial class SettingsPageViewModel(
     }
 
     [RelayCommand]
+    private async Task RefreshCompanionSessions()
+    {
+        var settings = await machineRuntimeService.GetSettingsAsync();
+        await RefreshCompanionSessionsCoreAsync(settings);
+        SetStatus(nameof(AppLanguageStrings.SettingsReadyStatus));
+    }
+
+    [RelayCommand]
+    private async Task RevokeCompanion(CloudCompanionSessionInfo? session)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        var settings = await machineRuntimeService.GetSettingsAsync();
+        if (!CanManageCompanionSessions(settings))
+        {
+            StatusMessage = "Cloud pairing indisponibil.";
+            return;
+        }
+
+        var revokedCount = await cloudBridgeService.Client.RevokeCompanionSessionAsync(
+            settings.CloudApiBaseUrl,
+            new CloudCompanionSessionRevokeRequest
+            {
+                MachineId = settings.MachineId,
+                MachineToken = settings.CloudMachineToken,
+                CompanionTokenPrefix = session.CompanionTokenPrefix,
+            });
+
+        await RefreshCompanionSessionsCoreAsync(settings);
+        StatusMessage = revokedCount > 0
+            ? $"Companion revocat: {session.CompanionTokenPrefix}"
+            : "Niciun companion revocat.";
+    }
+
+    [RelayCommand]
+    private async Task RevokeAllCompanions()
+    {
+        var settings = await machineRuntimeService.GetSettingsAsync();
+        if (!CanManageCompanionSessions(settings))
+        {
+            StatusMessage = "Cloud pairing indisponibil.";
+            return;
+        }
+
+        var revokedCount = await cloudBridgeService.Client.RevokeAllCompanionSessionsAsync(
+            settings.CloudApiBaseUrl,
+            new CloudMachineCompanionSessionsRequest
+            {
+                MachineId = settings.MachineId,
+                MachineToken = settings.CloudMachineToken,
+            });
+
+        await RefreshCompanionSessionsCoreAsync(settings);
+        StatusMessage = $"Companions revocate: {revokedCount}";
+    }
+
+    [RelayCommand]
+    private async Task ExportOperationalBackup()
+    {
+        var directory = await operationalBackupService.ExportAsync();
+        StatusMessage = $"Backup exportat: {directory}";
+    }
+
+    [RelayCommand]
+    private async Task RestoreLatestBackup()
+    {
+        var path = await operationalBackupService.RestoreLatestAsync();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusMessage = "Nu exista backup local.";
+            return;
+        }
+
+        await LoadAsync();
+        StatusMessage = $"Backup restaurat: {path}";
+    }
+
+    [RelayCommand]
     private void ClosePairingPopup() => IsPairingPopupVisible = false;
 
     [RelayCommand]
@@ -363,6 +468,9 @@ public partial class SettingsPageViewModel(
         StatusMessage = T(_statusMessageKey);
         OnPropertyChanged(nameof(PairingCodeDisplay));
         OnPropertyChanged(nameof(PairingEndpointDisplay));
+        OnPropertyChanged(nameof(ControlAppUpdateAvailabilityText));
+        OnPropertyChanged(nameof(Esp32UpdateAvailabilityText));
+        OnPropertyChanged(nameof(ControlAppVersionDisplay));
     }
 
     private void SetStatus(string key)
@@ -370,6 +478,35 @@ public partial class SettingsPageViewModel(
         _statusMessageKey = key;
         StatusMessage = T(key);
     }
+
+    private async Task RefreshCompanionSessionsCoreAsync(MachineSettings settings)
+    {
+        if (!CanManageCompanionSessions(settings))
+        {
+            CompanionSessions = [];
+            return;
+        }
+
+        try
+        {
+            var sessions = await cloudBridgeService.Client.GetCompanionSessionsAsync(
+                settings.CloudApiBaseUrl,
+                new CloudMachineCompanionSessionsRequest
+                {
+                    MachineId = settings.MachineId,
+                    MachineToken = settings.CloudMachineToken,
+                });
+            CompanionSessions = new ObservableCollection<CloudCompanionSessionInfo>(sessions);
+        }
+        catch
+        {
+            CompanionSessions = [];
+        }
+    }
+
+    private static bool CanManageCompanionSessions(MachineSettings settings) =>
+        !string.IsNullOrWhiteSpace(settings.CloudApiBaseUrl)
+        && !string.IsNullOrWhiteSpace(settings.CloudMachineToken);
 
     private bool TryBuildAdminPasscodeHash(out string hash)
     {
@@ -387,6 +524,12 @@ public partial class SettingsPageViewModel(
         if (!newPasscode.All(char.IsDigit) || !confirmPasscode.All(char.IsDigit))
         {
             SetStatus(nameof(AppLanguageStrings.SettingsAdminPasscodeDigitsOnlyStatus));
+            return false;
+        }
+
+        if (string.Equals(newPasscode, AdminPasscodeHasher.DefaultPasscode, StringComparison.Ordinal))
+        {
+            SetStatus(nameof(AppLanguageStrings.SettingsAdminPasscodeDefaultRejectedStatus));
             return false;
         }
 
@@ -456,6 +599,27 @@ public partial class SettingsPageViewModel(
         return string.IsNullOrWhiteSpace(normalized)
             ? fallback
             : normalized;
+    }
+
+    private static string BuildControlAppVersion()
+    {
+        try
+        {
+            var version = AppInfo.Current.VersionString?.Trim() ?? string.Empty;
+            var build = AppInfo.Current.BuildString?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                return string.IsNullOrWhiteSpace(build) ? "n/a" : build;
+            }
+
+            return string.IsNullOrWhiteSpace(build)
+                ? version
+                : $"{version} ({build})";
+        }
+        catch
+        {
+            return "n/a";
+        }
     }
 
     private string T(string key) => languageService.GetText(key);

@@ -5,31 +5,16 @@ using Vendomat.Controller.Domain.Models;
 
 namespace Vendomat.Controller.Tablet.Services;
 
-public sealed class PairingService : IPairingService
+public sealed class PairingService(LocalApiSecurityService localApiSecurityService) : IPairingService
 {
     private readonly ConcurrentDictionary<Guid, PairingQrPayload> _activePayloads = new();
 
     public Task<PairingQrPayload> GenerateAsync(MachineSettings settings, CancellationToken cancellationToken = default)
     {
-        var payload = new PairingQrPayload
-        {
-            PayloadVersion = 2,
-            MachineId = settings.MachineId,
-            MachineName = settings.MachineName,
-            PairingCode = RandomNumberGenerator.GetInt32(10_000_000, 99_999_999).ToString(),
-            LocalApiBaseUrl = NormalizeBaseUrl(settings.LocalApiBaseUrl),
-            PublicApiBaseUrl = NormalizeBaseUrl(settings.PublicApiBaseUrl),
-            CloudApiBaseUrl = NormalizeBaseUrl(settings.CloudApiBaseUrl),
-            IssuedAtUtc = DateTimeOffset.UtcNow,
-            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(10),
-        };
-
-        CleanupExpiredPayloads();
-        _activePayloads.AddOrUpdate(payload.MachineId, payload, (_, _) => payload);
-        return Task.FromResult(payload);
+        return GenerateCoreAsync(settings, cancellationToken);
     }
 
-    public Task<PairingClaimResult> ClaimAsync(MachineSettings settings, PairingClaimRequest request, CancellationToken cancellationToken = default)
+    public async Task<PairingClaimResult> ClaimAsync(MachineSettings settings, PairingClaimRequest request, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         CleanupExpiredPayloads();
@@ -55,16 +40,40 @@ public sealed class PairingService : IPairingService
             throw new InvalidOperationException("Codul de pairing este invalid.");
         }
 
-        return Task.FromResult(new PairingClaimResult
+        return new PairingClaimResult
         {
             MachineId = settings.MachineId,
             MachineName = settings.MachineName,
             LocalApiBaseUrl = NormalizeBaseUrl(settings.LocalApiBaseUrl),
+            LocalSecureApiBaseUrl = payload.LocalSecureApiBaseUrl,
+            LocalCertificateFingerprint = payload.LocalCertificateFingerprint,
             PublicApiBaseUrl = NormalizeBaseUrl(settings.PublicApiBaseUrl),
             CloudApiBaseUrl = NormalizeBaseUrl(settings.CloudApiBaseUrl),
             CompanionAccessToken = settings.CompanionAccessToken,
             IssuedAtUtc = DateTimeOffset.UtcNow,
-        });
+        };
+    }
+
+    private async Task<PairingQrPayload> GenerateCoreAsync(MachineSettings settings, CancellationToken cancellationToken)
+    {
+        var payload = new PairingQrPayload
+        {
+            PayloadVersion = 3,
+            MachineId = settings.MachineId,
+            MachineName = settings.MachineName,
+            PairingCode = RandomNumberGenerator.GetInt32(10_000_000, 99_999_999).ToString(),
+            LocalApiBaseUrl = NormalizeBaseUrl(settings.LocalApiBaseUrl),
+            LocalSecureApiBaseUrl = localApiSecurityService.BuildHttpsBaseUrl(settings.LocalApiBaseUrl),
+            LocalCertificateFingerprint = await localApiSecurityService.GetCertificateFingerprintAsync(cancellationToken),
+            PublicApiBaseUrl = NormalizeBaseUrl(settings.PublicApiBaseUrl),
+            CloudApiBaseUrl = NormalizeBaseUrl(settings.CloudApiBaseUrl),
+            IssuedAtUtc = DateTimeOffset.UtcNow,
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+        };
+
+        CleanupExpiredPayloads();
+        _activePayloads.AddOrUpdate(payload.MachineId, payload, (_, _) => payload);
+        return payload;
     }
 
     private void CleanupExpiredPayloads()

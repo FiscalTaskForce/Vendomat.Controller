@@ -4,6 +4,7 @@ namespace Vendomat.Controller.Application.Contracts;
 
 public sealed class SanitationRequest
 {
+    public Guid? CommandId { get; set; }
     public SanitationMode Mode { get; set; }
     public TimeSpan Duration { get; set; }
     public TimeSpan PulseOn { get; set; }

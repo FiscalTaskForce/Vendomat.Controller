@@ -4,7 +4,9 @@ using Vendomat.Controller.Tablet.Persistence.Entities;
 
 namespace Vendomat.Controller.Tablet.Services;
 
-public sealed class SqliteMachineSettingsRepository(LocalDatabaseService database) : IMachineSettingsRepository
+public sealed class SqliteMachineSettingsRepository(
+    LocalDatabaseService database,
+    DeviceSecretStore deviceSecretStore) : IMachineSettingsRepository
 {
     public async Task<MachineSettings> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -13,17 +15,22 @@ public sealed class SqliteMachineSettingsRepository(LocalDatabaseService databas
         if (entity is not null)
         {
             var settings = entity.ToDomain();
+            settings.CloudMachineToken = await deviceSecretStore.UnprotectAsync(settings.CloudMachineToken);
+            settings.CompanionAccessToken = await deviceSecretStore.UnprotectAsync(settings.CompanionAccessToken);
             var shouldPersistNormalizedAdminPasscode = !string.Equals(
                 entity.AdminPasscodeHash,
                 settings.AdminPasscodeHash,
                 StringComparison.Ordinal);
+            var shouldPersistProtectedSecrets =
+                !deviceSecretStore.IsProtected(entity.CloudMachineToken)
+                || !deviceSecretStore.IsProtected(entity.CompanionAccessToken);
 
             if (ShouldDisableLegacyEscrow(settings))
             {
                 settings.BillValidatorEscrowMode = false;
                 await SaveAsync(settings, cancellationToken);
             }
-            else if (shouldPersistNormalizedAdminPasscode)
+            else if (shouldPersistNormalizedAdminPasscode || shouldPersistProtectedSecrets)
             {
                 await SaveAsync(settings, cancellationToken);
             }
@@ -44,7 +51,10 @@ public sealed class SqliteMachineSettingsRepository(LocalDatabaseService databas
             settings.BillValidatorEscrowMode = false;
         }
 
-        await database.Connection.InsertOrReplaceAsync(MachineSettingsEntity.FromDomain(settings));
+        var entity = MachineSettingsEntity.FromDomain(settings);
+        entity.CloudMachineToken = await deviceSecretStore.ProtectAsync(entity.CloudMachineToken);
+        entity.CompanionAccessToken = await deviceSecretStore.ProtectAsync(entity.CompanionAccessToken);
+        await database.Connection.InsertOrReplaceAsync(entity);
     }
 
     private static bool ShouldDisableLegacyEscrow(MachineSettings settings) =>

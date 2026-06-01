@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,7 @@ public sealed class VendomatRemoteClient
     {
         PropertyNameCaseInsensitive = true,
     };
+    private readonly ConcurrentDictionary<string, HttpClient> _pinnedClients = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _tunnelLock = new(1, 1);
     private ClientWebSocket? _tunnelSocket;
     private string _tunnelSessionKey = string.Empty;
@@ -29,7 +31,7 @@ public sealed class VendomatRemoteClient
         _serializerOptions.Converters.Add(new NullableFlexibleDateTimeOffsetJsonConverter());
     }
 
-    public Task<(string ApiBaseUrl, MachineStatusSnapshot Payload)> GetStatusAsync(
+    public Task<RemoteCallResult<MachineStatusSnapshot>> GetStatusAsync(
         PairedMachineRecord record,
         CancellationToken cancellationToken = default) =>
         SendWithFallbackAsync<MachineStatusSnapshot>(
@@ -40,7 +42,7 @@ public sealed class VendomatRemoteClient
             ReadAttemptTimeout,
             cancellationToken);
 
-    public Task<(string ApiBaseUrl, MachineDashboardSnapshot Payload)> GetDashboardAsync(
+    public Task<RemoteCallResult<MachineDashboardSnapshot>> GetDashboardAsync(
         PairedMachineRecord record,
         CancellationToken cancellationToken = default) =>
         SendWithFallbackAsync<MachineDashboardSnapshot>(
@@ -51,7 +53,7 @@ public sealed class VendomatRemoteClient
             ReadAttemptTimeout,
             cancellationToken);
 
-    public Task<(string ApiBaseUrl, MachineSettings Payload)> GetSettingsAsync(
+    public Task<RemoteCallResult<MachineSettings>> GetSettingsAsync(
         PairedMachineRecord record,
         CancellationToken cancellationToken = default) =>
         SendWithFallbackAsync<MachineSettings>(
@@ -62,7 +64,7 @@ public sealed class VendomatRemoteClient
             ReadAttemptTimeout,
             cancellationToken);
 
-    public Task<(string ApiBaseUrl, MachineSettings Payload)> SaveSettingsAsync(
+    public Task<RemoteCallResult<MachineSettings>> SaveSettingsAsync(
         PairedMachineRecord record,
         MachineSettings settings,
         CancellationToken cancellationToken = default) =>
@@ -74,17 +76,20 @@ public sealed class VendomatRemoteClient
             WriteAttemptTimeout,
             cancellationToken);
 
-    public Task<string> RunSanitationAsync(
+    public Task<RemoteCommandResult> RunSanitationAsync(
         PairedMachineRecord record,
         SanitationRequest request,
-        CancellationToken cancellationToken = default) =>
-        SendWithoutBodyWithFallbackAsync(
+        CancellationToken cancellationToken = default)
+    {
+        request.CommandId ??= Guid.NewGuid();
+        return SendWithoutBodyWithFallbackAsync(
             record,
             CloudTunnelActions.RunSanitation,
             request,
             baseUrl => CreateRequest(HttpMethod.Post, baseUrl, "api/device/sanitation", record.CompanionAccessToken, request),
             WriteAttemptTimeout,
             cancellationToken);
+    }
 
     public async Task<RemoteCreditResult> AddRemoteCreditAsync(
         PairedMachineRecord record,
@@ -92,18 +97,20 @@ public sealed class VendomatRemoteClient
         CancellationToken cancellationToken = default)
     {
         var failures = new List<string>();
+        var commandId = Guid.NewGuid();
 
-        foreach (var apiBaseUrl in NormalizeCandidates(record.GetCandidateApiBaseUrls()))
+        foreach (var candidate in ConnectionStrategyResolver.GetCandidates(record))
         {
             try
             {
-                if (ShouldUseCloudTunnel(record, apiBaseUrl))
+                if (candidate.Mode == MachineConnectionMode.CloudBridge)
                 {
                     var payload = await SendTunnelAsync<CloudTunnelRemoteCreditResponse>(
                         record,
                         CloudTunnelActions.AddCredit,
                         new RemoteCreditRequest
                         {
+                            CommandId = commandId,
                             Amount = amount,
                         },
                         WriteAttemptTimeout,
@@ -113,7 +120,8 @@ public sealed class VendomatRemoteClient
                     {
                         return new RemoteCreditResult
                         {
-                            ApiBaseUrl = apiBaseUrl,
+                            ApiBaseUrl = candidate.ApiBaseUrl,
+                            ConnectionMode = candidate.Mode,
                             Snapshot = payload.Snapshot,
                         };
                     }
@@ -122,25 +130,31 @@ public sealed class VendomatRemoteClient
                     {
                         return new RemoteCreditResult
                         {
-                            ApiBaseUrl = apiBaseUrl,
+                            ApiBaseUrl = candidate.ApiBaseUrl,
+                            ConnectionMode = candidate.Mode,
                             IsQueued = true,
                             CommandId = payload.CommandId,
                         };
                     }
 
-                    failures.Add($"{apiBaseUrl}: Raspunsul tunelului pentru credit remote nu este recunoscut.");
+                    failures.Add($"{candidate.ApiBaseUrl}: Raspunsul tunelului pentru credit remote nu este recunoscut.");
                     continue;
                 }
 
-                using var request = CreateRequest(HttpMethod.Post, apiBaseUrl, "api/device/credit", record.CompanionAccessToken, new RemoteCreditRequest
+                using var request = CreateRequest(HttpMethod.Post, candidate.ApiBaseUrl, "api/device/credit", record.CompanionAccessToken, new RemoteCreditRequest
                 {
+                    CommandId = commandId,
                     Amount = amount,
                 });
-                using var response = await SendAsync(request, WriteAttemptTimeout, cancellationToken);
+                using var response = await SendAsync(
+                    request,
+                    WriteAttemptTimeout,
+                    GetPinnedCertificateFingerprint(record, candidate.ApiBaseUrl),
+                    cancellationToken);
                 var payloadJson = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    failures.Add($"{apiBaseUrl}: {BuildErrorMessage(response, payloadJson)}");
+                    failures.Add($"{candidate.ApiBaseUrl}: {BuildErrorMessage(response, payloadJson)}");
                     continue;
                 }
 
@@ -148,7 +162,8 @@ public sealed class VendomatRemoteClient
                 {
                     return new RemoteCreditResult
                     {
-                        ApiBaseUrl = apiBaseUrl,
+                        ApiBaseUrl = candidate.ApiBaseUrl,
+                        ConnectionMode = candidate.Mode,
                         Snapshot = snapshot,
                     };
                 }
@@ -157,17 +172,18 @@ public sealed class VendomatRemoteClient
                 {
                     return new RemoteCreditResult
                     {
-                        ApiBaseUrl = apiBaseUrl,
+                        ApiBaseUrl = candidate.ApiBaseUrl,
+                        ConnectionMode = candidate.Mode,
                         IsQueued = true,
                         CommandId = queued.CommandId,
                     };
                 }
 
-                failures.Add($"{apiBaseUrl}: Raspunsul API pentru credit remote nu este recunoscut.");
+                failures.Add($"{candidate.ApiBaseUrl}: Raspunsul API pentru credit remote nu este recunoscut.");
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failures.Add($"{apiBaseUrl}: {ex.Message}");
+                failures.Add($"{candidate.ApiBaseUrl}: {ex.Message}");
             }
         }
 
@@ -175,7 +191,7 @@ public sealed class VendomatRemoteClient
             $"Nu am putut contacta dozatorul pe niciun endpoint configurat. {string.Join(" | ", failures)}");
     }
 
-    public Task<(string ApiBaseUrl, PairingClaimResult Payload)> ClaimPairingAsync(
+    public Task<RemoteCallResult<PairingClaimResult>> ClaimPairingAsync(
         PairingQrPayload payload,
         CancellationToken cancellationToken = default)
     {
@@ -186,13 +202,14 @@ public sealed class VendomatRemoteClient
         };
 
         return SendClaimWithFallbackAsync(
-            GetCandidateApiBaseUrls(payload),
+            ConnectionStrategyResolver.GetCandidates(payload),
+            payload,
             baseUrl => CreateRequest(HttpMethod.Post, baseUrl, "api/pairing/claim", accessToken: null, request),
             ReadAttemptTimeout,
             cancellationToken);
     }
 
-    private async Task<(string ApiBaseUrl, T Payload)> SendWithFallbackAsync<T>(
+    private async Task<RemoteCallResult<T>> SendWithFallbackAsync<T>(
         PairedMachineRecord record,
         string tunnelAction,
         object? tunnelPayload,
@@ -202,19 +219,28 @@ public sealed class VendomatRemoteClient
     {
         var failures = new List<string>();
 
-        foreach (var apiBaseUrl in NormalizeCandidates(record.GetCandidateApiBaseUrls()))
+        foreach (var candidate in ConnectionStrategyResolver.GetCandidates(record))
         {
             try
             {
-                var payload = ShouldUseCloudTunnel(record, apiBaseUrl)
+                var payload = candidate.Mode == MachineConnectionMode.CloudBridge
                     ? await SendTunnelAsync<T>(record, tunnelAction, tunnelPayload, attemptTimeout, cancellationToken)
-                    : await SendHttpAsync<T>(requestFactory(apiBaseUrl), attemptTimeout, cancellationToken);
+                    : await SendHttpAsync<T>(
+                        requestFactory(candidate.ApiBaseUrl),
+                        GetPinnedCertificateFingerprint(record, candidate.ApiBaseUrl),
+                        attemptTimeout,
+                        cancellationToken);
 
-                return (apiBaseUrl, payload);
+                return new RemoteCallResult<T>
+                {
+                    ApiBaseUrl = candidate.ApiBaseUrl,
+                    ConnectionMode = candidate.Mode,
+                    Payload = payload,
+                };
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failures.Add($"{apiBaseUrl}: {ex.Message}");
+                failures.Add($"{candidate.ApiBaseUrl}: {ex.Message}");
             }
         }
 
@@ -222,7 +248,7 @@ public sealed class VendomatRemoteClient
             $"Nu am putut contacta dozatorul pe niciun endpoint configurat. {string.Join(" | ", failures)}");
     }
 
-    private async Task<string> SendWithoutBodyWithFallbackAsync(
+    private async Task<RemoteCommandResult> SendWithoutBodyWithFallbackAsync(
         PairedMachineRecord record,
         string tunnelAction,
         object? tunnelPayload,
@@ -232,11 +258,11 @@ public sealed class VendomatRemoteClient
     {
         var failures = new List<string>();
 
-        foreach (var apiBaseUrl in NormalizeCandidates(record.GetCandidateApiBaseUrls()))
+        foreach (var candidate in ConnectionStrategyResolver.GetCandidates(record))
         {
             try
             {
-                if (ShouldUseCloudTunnel(record, apiBaseUrl))
+                if (candidate.Mode == MachineConnectionMode.CloudBridge)
                 {
                     _ = await SendTunnelAsync<CloudTunnelAcceptedResponse>(
                         record,
@@ -247,16 +273,24 @@ public sealed class VendomatRemoteClient
                 }
                 else
                 {
-                    using var request = requestFactory(apiBaseUrl);
-                    using var response = await SendAsync(request, attemptTimeout, cancellationToken);
+                    using var request = requestFactory(candidate.ApiBaseUrl);
+                    using var response = await SendAsync(
+                        request,
+                        attemptTimeout,
+                        GetPinnedCertificateFingerprint(record, candidate.ApiBaseUrl),
+                        cancellationToken);
                     response.EnsureSuccessStatusCode();
                 }
 
-                return apiBaseUrl;
+                return new RemoteCommandResult
+                {
+                    ApiBaseUrl = candidate.ApiBaseUrl,
+                    ConnectionMode = candidate.Mode,
+                };
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failures.Add($"{apiBaseUrl}: {ex.Message}");
+                failures.Add($"{candidate.ApiBaseUrl}: {ex.Message}");
             }
         }
 
@@ -264,27 +298,37 @@ public sealed class VendomatRemoteClient
             $"Nu am putut contacta dozatorul pe niciun endpoint configurat. {string.Join(" | ", failures)}");
     }
 
-    private async Task<(string ApiBaseUrl, PairingClaimResult Payload)> SendClaimWithFallbackAsync(
-        IEnumerable<string> candidateApiBaseUrls,
+    private async Task<RemoteCallResult<PairingClaimResult>> SendClaimWithFallbackAsync(
+        IEnumerable<ConnectionEndpointCandidate> candidates,
+        PairingQrPayload pairingPayload,
         Func<string, HttpRequestMessage> requestFactory,
         TimeSpan attemptTimeout,
         CancellationToken cancellationToken)
     {
         var failures = new List<string>();
 
-        foreach (var apiBaseUrl in NormalizeCandidates(candidateApiBaseUrls))
+        foreach (var candidate in candidates)
         {
             try
             {
-                using var request = requestFactory(apiBaseUrl);
-                using var response = await SendAsync(request, attemptTimeout, cancellationToken);
+                using var request = requestFactory(candidate.ApiBaseUrl);
+                using var response = await SendAsync(
+                    request,
+                    attemptTimeout,
+                    GetPinnedCertificateFingerprint(pairingPayload, candidate.ApiBaseUrl),
+                    cancellationToken);
                 response.EnsureSuccessStatusCode();
                 var payload = await DeserializeResponseAsync<PairingClaimResult>(response, cancellationToken);
-                return (apiBaseUrl, payload);
+                return new RemoteCallResult<PairingClaimResult>
+                {
+                    ApiBaseUrl = candidate.ApiBaseUrl,
+                    ConnectionMode = candidate.Mode,
+                    Payload = payload,
+                };
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failures.Add($"{apiBaseUrl}: {ex.Message}");
+                failures.Add($"{candidate.ApiBaseUrl}: {ex.Message}");
             }
         }
 
@@ -294,10 +338,11 @@ public sealed class VendomatRemoteClient
 
     private async Task<T> SendHttpAsync<T>(
         HttpRequestMessage request,
+        string? pinnedCertificateFingerprint,
         TimeSpan attemptTimeout,
         CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(request, attemptTimeout, cancellationToken);
+        using var response = await SendAsync(request, attemptTimeout, pinnedCertificateFingerprint, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await DeserializeResponseAsync<T>(response, cancellationToken);
     }
@@ -486,55 +531,79 @@ public sealed class VendomatRemoteClient
     private async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         TimeSpan attemptTimeout,
+        string? pinnedCertificateFingerprint,
         CancellationToken cancellationToken)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(attemptTimeout);
-        return await _httpClient.SendAsync(request, timeoutCts.Token);
+        return await GetHttpClient(pinnedCertificateFingerprint).SendAsync(request, timeoutCts.Token);
     }
-
-    private static IEnumerable<string> GetCandidateApiBaseUrls(PairingQrPayload payload)
-    {
-        var candidates = new[]
-        {
-            payload.CloudApiBaseUrl,
-            payload.PublicApiBaseUrl,
-            payload.LocalApiBaseUrl,
-        };
-
-        return NormalizeCandidates(candidates);
-    }
-
-    private static IEnumerable<string> NormalizeCandidates(IEnumerable<string> candidateApiBaseUrls)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidate in candidateApiBaseUrls)
-        {
-            var normalized = candidate?.Trim();
-            if (string.IsNullOrWhiteSpace(normalized))
-            {
-                continue;
-            }
-
-            if (seen.Add(normalized))
-            {
-                yield return normalized;
-            }
-        }
-    }
-
-    private static bool ShouldUseCloudTunnel(PairedMachineRecord record, string apiBaseUrl) =>
-        !string.IsNullOrWhiteSpace(record.CloudApiBaseUrl)
-        && string.Equals(
-            NormalizeBaseUrl(record.CloudApiBaseUrl),
-            NormalizeBaseUrl(apiBaseUrl),
-            StringComparison.OrdinalIgnoreCase);
 
     private static string BuildTunnelSessionKey(PairedMachineRecord record) =>
         $"{record.MachineId:N}|{NormalizeBaseUrl(record.CloudApiBaseUrl)}|{record.CompanionAccessToken?.Trim()}";
 
     private static string NormalizeBaseUrl(string? apiBaseUrl) =>
         apiBaseUrl?.Trim().TrimEnd('/') ?? string.Empty;
+
+    private HttpClient GetHttpClient(string? pinnedCertificateFingerprint)
+    {
+        var normalizedFingerprint = NormalizeFingerprint(pinnedCertificateFingerprint);
+        if (string.IsNullOrWhiteSpace(normalizedFingerprint))
+        {
+            return _httpClient;
+        }
+
+        return _pinnedClients.GetOrAdd(normalizedFingerprint, fingerprint =>
+        {
+            var handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+                certificate is not null
+                && string.Equals(
+                    NormalizeFingerprint(certificate.GetCertHashString()),
+                    fingerprint,
+                    StringComparison.OrdinalIgnoreCase);
+
+            return new HttpClient(handler, disposeHandler: true);
+        });
+    }
+
+    private static string GetPinnedCertificateFingerprint(PairedMachineRecord record, string apiBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(record.LocalCertificateFingerprint))
+        {
+            return string.Empty;
+        }
+
+        return string.Equals(
+            NormalizeBaseUrl(record.LocalSecureApiBaseUrl),
+            NormalizeBaseUrl(apiBaseUrl),
+            StringComparison.OrdinalIgnoreCase)
+            ? record.LocalCertificateFingerprint
+            : string.Empty;
+    }
+
+    private static string GetPinnedCertificateFingerprint(PairingQrPayload payload, string apiBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(payload.LocalCertificateFingerprint))
+        {
+            return string.Empty;
+        }
+
+        return string.Equals(
+            NormalizeBaseUrl(payload.LocalSecureApiBaseUrl),
+            NormalizeBaseUrl(apiBaseUrl),
+            StringComparison.OrdinalIgnoreCase)
+            ? payload.LocalCertificateFingerprint
+            : string.Empty;
+    }
+
+    private static string NormalizeFingerprint(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Replace(":", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .Trim()
+                .ToUpperInvariant();
 
     private static string BuildUri(string apiBaseUrl, string relativePath)
     {

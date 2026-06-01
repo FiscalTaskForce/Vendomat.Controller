@@ -38,6 +38,10 @@ public partial class App : Microsoft.Maui.Controls.Application
             await ServiceRegistry.GetRequiredService<IKioskDisplayService>().EnterImmersiveModeAsync();
             Log.Info(StartupTag, "Immersive mode applied");
 
+            Log.Info(StartupTag, "Initializing local database");
+            await ServiceRegistry.GetRequiredService<LocalDatabaseService>().InitializeAsync();
+            Log.Info(StartupTag, "Local database initialized");
+
             _ = Task.Run(async () =>
             {
                 try

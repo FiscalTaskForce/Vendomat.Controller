@@ -1,6 +1,7 @@
 using Android.Util;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SQLitePCL;
 using Syncfusion.Maui.Core.Hosting;
 using Vendomat.Controller.Client.Localization;
 using Vendomat.Controller.Application.Interfaces;
@@ -18,6 +19,7 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         Log.Info(StartupTag, "CreateMauiApp start");
+        Batteries.Init();
         SyncfusionLicenseRegistrar.Register();
         var builder = MauiApp.CreateBuilder();
         builder.ConfigureSyncfusionCore();
@@ -34,6 +36,10 @@ public static class MauiProgram
 #endif
 
         builder.Services.AddSingleton<LocalDatabaseService>();
+        builder.Services.AddSingleton<LocalApiSecurityService>();
+        builder.Services.AddSingleton<DeviceSecretStore>();
+        builder.Services.AddSingleton<RemoteCommandJournal>();
+        builder.Services.AddSingleton<OperationalBackupService>();
         builder.Services.AddSingleton<LanguageService>();
         builder.Services.AddSingleton<IMachineSettingsRepository, SqliteMachineSettingsRepository>();
         builder.Services.AddSingleton<ISalesRepository, SqliteSalesRepository>();

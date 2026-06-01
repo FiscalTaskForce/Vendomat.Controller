@@ -9,6 +9,8 @@ public sealed class PairingQrPayload
     public string MachineName { get; set; } = string.Empty;
     public string PairingCode { get; set; } = string.Empty;
     public string LocalApiBaseUrl { get; set; } = string.Empty;
+    public string LocalSecureApiBaseUrl { get; set; } = string.Empty;
+    public string LocalCertificateFingerprint { get; set; } = string.Empty;
     public string PublicApiBaseUrl { get; set; } = string.Empty;
     public string CloudApiBaseUrl { get; set; } = string.Empty;
     public DateTimeOffset IssuedAtUtc { get; set; } = DateTimeOffset.UtcNow;
@@ -27,6 +29,16 @@ public sealed class PairingQrPayload
         if (!string.IsNullOrWhiteSpace(LocalApiBaseUrl))
         {
             payload["l"] = LocalApiBaseUrl.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(LocalSecureApiBaseUrl))
+        {
+            payload["s"] = LocalSecureApiBaseUrl.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(LocalCertificateFingerprint))
+        {
+            payload["f"] = LocalCertificateFingerprint.Trim();
         }
 
         if (!string.IsNullOrWhiteSpace(PublicApiBaseUrl))
@@ -79,6 +91,12 @@ public sealed class PairingQrPayload
                     ?? string.Empty,
                 LocalApiBaseUrl = ReadString(root, "LocalApiBaseUrl")
                     ?? ReadString(root, "l")
+                    ?? string.Empty,
+                LocalSecureApiBaseUrl = ReadString(root, "LocalSecureApiBaseUrl")
+                    ?? ReadString(root, "s")
+                    ?? string.Empty,
+                LocalCertificateFingerprint = ReadString(root, "LocalCertificateFingerprint")
+                    ?? ReadString(root, "f")
                     ?? string.Empty,
                 PublicApiBaseUrl = ReadString(root, "PublicApiBaseUrl")
                     ?? ReadString(root, "p")

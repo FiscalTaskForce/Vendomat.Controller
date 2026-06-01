@@ -1,3 +1,4 @@
+using Vendomat.Controller.Domain.Enums;
 using Vendomat.Controller.Domain.Security;
 
 namespace Vendomat.Controller.Domain.Models;
@@ -21,11 +22,12 @@ public sealed class MachineSettings
     public string Esp32PortName { get; set; } = "/dev/ttyS3";
     public int Esp32BaudRate { get; set; } = 115200;
     public bool Esp32AutoDiscover { get; set; } = true;
+    public RuntimeMode RuntimeMode { get; set; } = RuntimeMode.Production;
     public string ContactPhone { get; set; } = string.Empty;
     public string ContactEmail { get; set; } = string.Empty;
     public string LocalApiBaseUrl { get; set; } = "http://vendomat.local:1326";
     public string PublicApiBaseUrl { get; set; } = string.Empty;
-    public string CloudApiBaseUrl { get; set; } = "https://signal.dllsoft.ro/erp";
+    public string CloudApiBaseUrl { get; set; } = "https://vending.dllsoft.ro";
     public string CloudMachineToken { get; set; } = string.Empty;
     public string CompanionAccessToken { get; set; } = string.Empty;
     public string AdminPasscodeHash { get; set; } = AdminPasscodeHasher.DefaultHash;

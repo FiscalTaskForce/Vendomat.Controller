@@ -123,8 +123,9 @@ public partial class MainPageViewModel(
             {
                 try
                 {
-                    var (apiBaseUrl, snapshot) = await remoteClient.GetStatusAsync(record);
-                    record.ApiBaseUrl = apiBaseUrl;
+                    var result = await remoteClient.GetStatusAsync(record);
+                    var snapshot = result.Payload;
+                    record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
                     record.MachineName = snapshot.Settings.MachineName;
                     record.LocalApiBaseUrl = snapshot.Settings.LocalApiBaseUrl;
                     record.PublicApiBaseUrl = snapshot.Settings.PublicApiBaseUrl;

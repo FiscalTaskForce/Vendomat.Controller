@@ -30,6 +30,9 @@ public static class AdminPasscodeHasher
         return string.Equals(normalizedStoredHash, Hash(passcode), StringComparison.Ordinal);
     }
 
+    public static bool IsDefaultHash(string? storedHash) =>
+        string.Equals(NormalizeStoredHash(storedHash), DefaultHash, StringComparison.Ordinal);
+
     public static string NormalizeStoredHash(string? storedHash)
     {
         if (string.IsNullOrWhiteSpace(storedHash))

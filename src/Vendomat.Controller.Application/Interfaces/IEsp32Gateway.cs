@@ -1,3 +1,4 @@
+using Vendomat.Controller.Application.Contracts;
 using Vendomat.Controller.Domain.Enums;
 using Vendomat.Controller.Domain.Models;
 
@@ -13,5 +14,6 @@ public interface IEsp32Gateway
     Task StartAsync(string preferredPortName, int baudRate, bool autoDiscover, CancellationToken cancellationToken = default);
     Task SendDispenseRequestAsync(decimal targetLiters, int pulsesPerLiter, CancellationToken cancellationToken = default);
     Task SendSanitationAsync(SanitationMode mode, TimeSpan duration, TimeSpan pulseOn, TimeSpan pulseOff, CancellationToken cancellationToken = default);
+    Task SendFirmwareUpdateAsync(Esp32FirmwareUpdateRequest request, CancellationToken cancellationToken = default);
     Task StopDispenseAsync(CancellationToken cancellationToken = default);
 }

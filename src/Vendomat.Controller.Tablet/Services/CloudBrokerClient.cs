@@ -10,6 +10,11 @@ public sealed class CloudBrokerClient(HttpClient httpClient)
         public bool HasActiveWatcher { get; set; }
     }
 
+    private sealed class RevokeResponse
+    {
+        public int RevokedCount { get; set; }
+    }
+
     public async Task PublishPairingAsync(CloudPairingUpsertRequest request, CancellationToken cancellationToken = default)
     {
         using var response = await httpClient.PostAsJsonAsync(
@@ -52,6 +57,51 @@ public sealed class CloudBrokerClient(HttpClient httpClient)
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<IReadOnlyList<CloudCompanionSessionInfo>> GetCompanionSessionsAsync(
+        string cloudApiBaseUrl,
+        CloudMachineCompanionSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            BuildUri(cloudApiBaseUrl, "api/cloud/machine/companions"),
+            request,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<CloudCompanionSessionInfo>>(cancellationToken: cancellationToken)
+            ?? [];
+    }
+
+    public async Task<int> RevokeCompanionSessionAsync(
+        string cloudApiBaseUrl,
+        CloudCompanionSessionRevokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            BuildUri(cloudApiBaseUrl, "api/cloud/machine/companions/revoke"),
+            request,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<RevokeResponse>(cancellationToken: cancellationToken);
+        return payload?.RevokedCount ?? 0;
+    }
+
+    public async Task<int> RevokeAllCompanionSessionsAsync(
+        string cloudApiBaseUrl,
+        CloudMachineCompanionSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            BuildUri(cloudApiBaseUrl, "api/cloud/machine/companions/revoke-all"),
+            request,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<RevokeResponse>(cancellationToken: cancellationToken);
+        return payload?.RevokedCount ?? 0;
     }
 
     private static string BuildUri(string apiBaseUrl, string relativePath)

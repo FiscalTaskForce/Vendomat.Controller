@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Vendomat.Controller.Client.Localization;
 using Vendomat.Controller.Mobile.Models;
+using Vendomat.Controller.Mobile.Services;
 
 namespace Vendomat.Controller.Mobile.ViewModels;
 
@@ -30,6 +31,17 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
     [ObservableProperty]
     private decimal lastKnownPricePerLiter;
 
+    [ObservableProperty]
+    private MachineConnectionMode lastConnectionMode;
+
+    public string ConnectionModeText => LastConnectionMode switch
+    {
+        MachineConnectionMode.LocalNetwork => languageService.GetText(nameof(AppLanguageStrings.MobileConnectionActiveLocal)),
+        MachineConnectionMode.DirectInternet => languageService.GetText(nameof(AppLanguageStrings.MobileConnectionActiveDirect)),
+        MachineConnectionMode.CloudBridge => languageService.GetText(nameof(AppLanguageStrings.MobileConnectionActiveBridge)),
+        _ => languageService.GetText(nameof(AppLanguageStrings.MobileConnectionActiveUnknown)),
+    };
+
     public string AvailabilityText => IsOnline
         ? languageService.GetText(nameof(AppLanguageStrings.MobileDevicesStatusOnline))
         : languageService.GetText(nameof(AppLanguageStrings.MobileDevicesStatusOffline));
@@ -56,6 +68,8 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
 
     partial void OnLastKnownPricePerLiterChanged(decimal value) => OnPropertyChanged(nameof(SnapshotSummary));
 
+    partial void OnLastConnectionModeChanged(MachineConnectionMode value) => OnPropertyChanged(nameof(ConnectionModeText));
+
     public void Apply(PairedMachineRecord record)
     {
         MachineId = record.MachineId;
@@ -68,11 +82,15 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
         LastKnownStockLiters = record.LastKnownStockLiters;
         LastKnownTemperatureCelsius = record.LastKnownTemperatureCelsius;
         LastKnownPricePerLiter = record.LastKnownPricePerLiter;
+        LastConnectionMode = record.LastConnectionMode == MachineConnectionMode.Unknown
+            ? ConnectionStrategyResolver.InferMode(record, ApiBaseUrl)
+            : record.LastConnectionMode;
     }
 
     public void RefreshLocalized()
     {
         OnPropertyChanged(nameof(AvailabilityText));
         OnPropertyChanged(nameof(LastSeenText));
+        OnPropertyChanged(nameof(ConnectionModeText));
     }
 }

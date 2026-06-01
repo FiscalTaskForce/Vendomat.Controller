@@ -21,6 +21,7 @@ public partial class MachineSettingsViewModel(
     private static readonly TimeSpan RemoteApplyTimeout = TimeSpan.FromSeconds(18);
     private static readonly TimeSpan RemoteApplyPollInterval = TimeSpan.FromMilliseconds(750);
     private const string SalesTabKey = "sales";
+    private const string ConnectionTabKey = "connection";
     private const string GeneralTabKey = "general";
     private const string PaymentsTabKey = "payments";
     private const string ValidatorTabKey = "validator";
@@ -37,7 +38,10 @@ public partial class MachineSettingsViewModel(
     private DateTime _lastLocalEditUtc = DateTime.MinValue;
 
     [ObservableProperty]
-    private string selectedTab = SalesTabKey;
+    private string selectedTab = ConnectionTabKey;
+
+    [ObservableProperty]
+    private MachineConnectionPreference selectedConnectionPreference = MachineConnectionPreference.Auto;
 
     [ObservableProperty]
     private string machineIdentifier = string.Empty;
@@ -117,6 +121,22 @@ public partial class MachineSettingsViewModel(
     [ObservableProperty]
     private ObservableCollection<CashChannelSetting> cashChannels = [];
 
+    [ObservableProperty]
+    private string activeConnectionModeTitle = string.Empty;
+
+    [ObservableProperty]
+    private string activeConnectionEndpoint = string.Empty;
+
+    [ObservableProperty]
+    private string connectionAvailabilityText = string.Empty;
+
+    [ObservableProperty]
+    private string connectionFallbackText = string.Empty;
+
+    public ObservableCollection<ConnectionModeOptionViewModel> ConnectionModeOptions { get; } = [];
+
+    public bool IsConnectionTabSelected => SelectedTab == ConnectionTabKey;
+
     public bool IsSalesTabSelected => SelectedTab == SalesTabKey;
 
     public bool IsGeneralTabSelected => SelectedTab == GeneralTabKey;
@@ -139,7 +159,13 @@ public partial class MachineSettingsViewModel(
         }
 
         if (e.PropertyName is nameof(StatusMessage)
+            or nameof(SelectedConnectionPreference)
+            or nameof(ActiveConnectionModeTitle)
+            or nameof(ActiveConnectionEndpoint)
+            or nameof(ConnectionAvailabilityText)
+            or nameof(ConnectionFallbackText)
             or nameof(SelectedTab)
+            or nameof(IsConnectionTabSelected)
             or nameof(IsSalesTabSelected)
             or nameof(IsGeneralTabSelected)
             or nameof(IsPaymentsTabSelected)
@@ -155,12 +181,20 @@ public partial class MachineSettingsViewModel(
 
     partial void OnSelectedTabChanged(string value)
     {
+        OnPropertyChanged(nameof(IsConnectionTabSelected));
         OnPropertyChanged(nameof(IsSalesTabSelected));
         OnPropertyChanged(nameof(IsGeneralTabSelected));
         OnPropertyChanged(nameof(IsPaymentsTabSelected));
         OnPropertyChanged(nameof(IsValidatorTabSelected));
         OnPropertyChanged(nameof(IsEsp32TabSelected));
         OnPropertyChanged(nameof(IsCleaningTabSelected));
+    }
+
+    partial void OnSelectedConnectionPreferenceChanged(MachineConnectionPreference value)
+    {
+        SyncConnectionModeSelection();
+        RefreshConnectionSummary();
+        _ = PersistConnectionPreferenceAsync();
     }
 
     public async Task LoadAsync(Guid machineId)
@@ -180,6 +214,10 @@ public partial class MachineSettingsViewModel(
             return;
         }
 
+        SelectedConnectionPreference = _record.PreferredConnectionPreference;
+        RebuildConnectionModeOptions();
+        RefreshConnectionSummary();
+
         var loaded = await RefreshFromRemoteAsync(updateStatus: true);
         if (loaded)
         {
@@ -196,6 +234,9 @@ public partial class MachineSettingsViewModel(
 
     [RelayCommand]
     private Task Save() => SaveCoreAsync();
+
+    [RelayCommand]
+    private void ShowConnectionTab() => SelectedTab = ConnectionTabKey;
 
     [RelayCommand]
     private void ShowSalesTab() => SelectedTab = SalesTabKey;
@@ -227,6 +268,17 @@ public partial class MachineSettingsViewModel(
     [RelayCommand]
     private Task RunPulsedCleaning() => RunCleaningAsync(SanitationMode.Pulsed, TimeSpan.FromSeconds(15), TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
 
+    [RelayCommand]
+    private void SelectConnectionMode(ConnectionModeOptionViewModel? option)
+    {
+        if (option is null)
+        {
+            return;
+        }
+
+        SelectedConnectionPreference = option.Preference;
+    }
+
     private async Task<bool> RefreshFromRemoteAsync(bool updateStatus = false)
     {
         if (_record is null)
@@ -236,16 +288,21 @@ public partial class MachineSettingsViewModel(
 
         try
         {
-            var (apiBaseUrl, settings) = await remoteClient.GetSettingsAsync(_record);
-            _record.ApiBaseUrl = apiBaseUrl;
+            var result = await remoteClient.GetSettingsAsync(_record);
+            var settings = result.Payload;
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
             _record.LocalApiBaseUrl = settings.LocalApiBaseUrl;
             _record.PublicApiBaseUrl = settings.PublicApiBaseUrl;
             _record.CloudApiBaseUrl = settings.CloudApiBaseUrl;
-            _record.CompanionAccessToken = settings.CompanionAccessToken;
+            if (!string.IsNullOrWhiteSpace(settings.CompanionAccessToken))
+            {
+                _record.CompanionAccessToken = settings.CompanionAccessToken;
+            }
             _loadedSettings = settings;
 
             Apply(settings);
             await pairedMachineStore.AddOrUpdateAsync(_record);
+            RefreshConnectionSummary();
 
             if (updateStatus)
             {
@@ -275,6 +332,7 @@ public partial class MachineSettingsViewModel(
         try
         {
             _isSaving = true;
+            await PersistConnectionPreferenceAsync();
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSending));
             var settings = _loadedSettings is null ? new MachineSettings() : CloneSettings(_loadedSettings);
             settings.MachineId = _machineId;
@@ -308,10 +366,12 @@ public partial class MachineSettingsViewModel(
                 return;
             }
 
-            var (apiBaseUrl, savedSettings) = await remoteClient.SaveSettingsAsync(_record, settings);
+            var saveResult = await remoteClient.SaveSettingsAsync(_record, settings);
+            var savedSettings = saveResult.Payload;
             _loadedSettings = CloneSettings(savedSettings);
-            UpdateRecordFromSettings(_record, apiBaseUrl, savedSettings);
+            UpdateRecordFromSettings(_record, saveResult, savedSettings);
             await pairedMachineStore.AddOrUpdateAsync(_record);
+            RefreshConnectionSummary();
 
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusAwaitingDevice));
             var appliedSettings = await WaitForAppliedSettingsAsync(_record, settings);
@@ -319,8 +379,9 @@ public partial class MachineSettingsViewModel(
             {
                 _loadedSettings = CloneSettings(appliedSettings);
                 Apply(appliedSettings);
-                UpdateRecordFromSettings(_record, _record.ApiBaseUrl, appliedSettings);
+                UpdateRecordFromSettings(_record, _record.ApiBaseUrl, _record.LastConnectionMode, appliedSettings);
                 await pairedMachineStore.AddOrUpdateAsync(_record);
+                RefreshConnectionSummary();
             }
 
             NewAdminPasscode = string.Empty;
@@ -349,13 +410,16 @@ public partial class MachineSettingsViewModel(
 
         try
         {
-            _record.ApiBaseUrl = await remoteClient.RunSanitationAsync(_record, new SanitationRequest
+            var result = await remoteClient.RunSanitationAsync(_record, new SanitationRequest
             {
                 Mode = mode,
                 Duration = duration,
                 PulseOn = pulseOn,
                 PulseOff = pulseOff,
             });
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
+            await pairedMachineStore.AddOrUpdateAsync(_record);
+            RefreshConnectionSummary();
 
             await RefreshFromRemoteAsync(updateStatus: false);
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSaved));
@@ -394,6 +458,7 @@ public partial class MachineSettingsViewModel(
             PublicApiBaseUrl = settings.PublicApiBaseUrl;
             CloudApiBaseUrl = settings.CloudApiBaseUrl;
             CashChannels = new ObservableCollection<CashChannelSetting>(settings.CashChannels.Select(CloneChannel));
+            RefreshConnectionSummary();
         }
         finally
         {
@@ -499,7 +564,92 @@ public partial class MachineSettingsViewModel(
         }
     }
 
-    private void OnLanguageChanged(object? sender, EventArgs e) => StatusMessage = T(_statusMessageKey);
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        StatusMessage = T(_statusMessageKey);
+        RebuildConnectionModeOptions();
+        RefreshConnectionSummary();
+    }
+
+    private void RebuildConnectionModeOptions()
+    {
+        ConnectionModeOptions.Clear();
+        ConnectionModeOptions.Add(new ConnectionModeOptionViewModel(
+            MachineConnectionPreference.Auto,
+            T(nameof(AppLanguageStrings.MobileConnectionModeAutoTitle)),
+            T(nameof(AppLanguageStrings.MobileConnectionModeAutoDescription))));
+        ConnectionModeOptions.Add(new ConnectionModeOptionViewModel(
+            MachineConnectionPreference.LocalFirst,
+            T(nameof(AppLanguageStrings.MobileConnectionModeLocalTitle)),
+            T(nameof(AppLanguageStrings.MobileConnectionModeLocalDescription))));
+        ConnectionModeOptions.Add(new ConnectionModeOptionViewModel(
+            MachineConnectionPreference.DirectFirst,
+            T(nameof(AppLanguageStrings.MobileConnectionModeDirectTitle)),
+            T(nameof(AppLanguageStrings.MobileConnectionModeDirectDescription))));
+        ConnectionModeOptions.Add(new ConnectionModeOptionViewModel(
+            MachineConnectionPreference.CloudBridgeOnly,
+            T(nameof(AppLanguageStrings.MobileConnectionModeBridgeTitle)),
+            T(nameof(AppLanguageStrings.MobileConnectionModeBridgeDescription))));
+        SyncConnectionModeSelection();
+    }
+
+    private void SyncConnectionModeSelection()
+    {
+        foreach (var option in ConnectionModeOptions)
+        {
+            option.IsSelected = option.Preference == SelectedConnectionPreference;
+        }
+    }
+
+    private void RefreshConnectionSummary()
+    {
+        var localAvailable = ConnectionStrategyResolver.IsSameLocalNetwork(LocalApiBaseUrl);
+        ConnectionAvailabilityText = localAvailable
+            ? T(nameof(AppLanguageStrings.MobileConnectionLocalDetected))
+            : T(nameof(AppLanguageStrings.MobileConnectionLocalNotDetected));
+        ConnectionFallbackText = string.Join(
+            " -> ",
+            ConnectionStrategyResolver
+                .GetAttemptOrder(SelectedConnectionPreference, localAvailable)
+                .Select(GetConnectionModeTitle));
+
+        var activeMode = _record?.LastConnectionMode ?? MachineConnectionMode.Unknown;
+        if (activeMode == MachineConnectionMode.Unknown && _record is not null)
+        {
+            activeMode = ConnectionStrategyResolver.InferMode(_record, _record.ApiBaseUrl);
+        }
+
+        ActiveConnectionModeTitle = GetConnectionModeTitle(activeMode);
+        ActiveConnectionEndpoint = !string.IsNullOrWhiteSpace(_record?.LastConnectionEndpoint)
+            ? _record!.LastConnectionEndpoint
+            : (!string.IsNullOrWhiteSpace(_record?.ApiBaseUrl)
+                ? _record.ApiBaseUrl
+                : T(nameof(AppLanguageStrings.MobileConnectionEndpointMissing)));
+    }
+
+    private async Task PersistConnectionPreferenceAsync()
+    {
+        if (_record is null)
+        {
+            return;
+        }
+
+        if (_record.PreferredConnectionPreference == SelectedConnectionPreference)
+        {
+            return;
+        }
+
+        _record.PreferredConnectionPreference = SelectedConnectionPreference;
+        await pairedMachineStore.AddOrUpdateAsync(_record);
+    }
+
+    private string GetConnectionModeTitle(MachineConnectionMode mode) => mode switch
+    {
+        MachineConnectionMode.LocalNetwork => T(nameof(AppLanguageStrings.MobileConnectionActiveLocal)),
+        MachineConnectionMode.DirectInternet => T(nameof(AppLanguageStrings.MobileConnectionActiveDirect)),
+        MachineConnectionMode.CloudBridge => T(nameof(AppLanguageStrings.MobileConnectionActiveBridge)),
+        _ => T(nameof(AppLanguageStrings.MobileConnectionActiveUnknown)),
+    };
 
     private void SetStatus(string key)
     {
@@ -517,8 +667,9 @@ public partial class MachineSettingsViewModel(
             try
             {
                 await Task.Delay(RemoteApplyPollInterval, timeoutCts.Token);
-                var (apiBaseUrl, remoteSettings) = await remoteClient.GetSettingsAsync(record, timeoutCts.Token);
-                UpdateRecordFromSettings(record, apiBaseUrl, remoteSettings);
+                var result = await remoteClient.GetSettingsAsync(record, timeoutCts.Token);
+                var remoteSettings = result.Payload;
+                UpdateRecordFromSettings(record, result, remoteSettings);
                 if (AreEquivalent(expectedSettings, remoteSettings))
                 {
                     return remoteSettings;
@@ -589,18 +740,28 @@ public partial class MachineSettingsViewModel(
         return true;
     }
 
-    private static void UpdateRecordFromSettings(PairedMachineRecord record, string? apiBaseUrl, MachineSettings settings)
+    private static void UpdateRecordFromSettings(
+        PairedMachineRecord record,
+        RemoteCallResult<MachineSettings> result,
+        MachineSettings settings) =>
+        UpdateRecordFromSettings(record, result.ApiBaseUrl, result.ConnectionMode, settings);
+
+    private static void UpdateRecordFromSettings(
+        PairedMachineRecord record,
+        string? apiBaseUrl,
+        MachineConnectionMode connectionMode,
+        MachineSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(apiBaseUrl))
-        {
-            record.ApiBaseUrl = apiBaseUrl;
-        }
+        record.RememberSuccessfulConnection(apiBaseUrl, connectionMode);
 
         record.MachineName = settings.MachineName;
         record.LocalApiBaseUrl = settings.LocalApiBaseUrl;
         record.PublicApiBaseUrl = settings.PublicApiBaseUrl;
         record.CloudApiBaseUrl = settings.CloudApiBaseUrl;
-        record.CompanionAccessToken = settings.CompanionAccessToken;
+        if (!string.IsNullOrWhiteSpace(settings.CompanionAccessToken))
+        {
+            record.CompanionAccessToken = settings.CompanionAccessToken;
+        }
     }
 
     private static string NormalizeApiBaseUrl(string? value, string fallback)
@@ -638,6 +799,7 @@ public partial class MachineSettingsViewModel(
         Esp32PortName = settings.Esp32PortName,
         Esp32BaudRate = settings.Esp32BaudRate,
         Esp32AutoDiscover = settings.Esp32AutoDiscover,
+        RuntimeMode = settings.RuntimeMode,
         ContactPhone = settings.ContactPhone,
         ContactEmail = settings.ContactEmail,
         LocalApiBaseUrl = settings.LocalApiBaseUrl,

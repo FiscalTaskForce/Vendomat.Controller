@@ -40,6 +40,12 @@ public sealed class AppLanguageStrings
     public string DashboardAdminUnlockSubtitle { get; set; } = string.Empty;
     public string DashboardAdminUnlockPlaceholder { get; set; } = string.Empty;
     public string DashboardAdminUnlockInvalid { get; set; } = string.Empty;
+    public string DashboardAdminChangeRequired { get; set; } = string.Empty;
+    public string DashboardAdminChangeConfirm { get; set; } = string.Empty;
+    public string DashboardAdminChangeMismatch { get; set; } = string.Empty;
+    public string DashboardAdminChangeTooShort { get; set; } = string.Empty;
+    public string DashboardAdminChangeDigitsOnly { get; set; } = string.Empty;
+    public string DashboardAdminDefaultPasscodeBlocked { get; set; } = string.Empty;
 
     public string SettingsTitle { get; set; } = string.Empty;
     public string SettingsSalesTab { get; set; } = string.Empty;
@@ -60,6 +66,14 @@ public sealed class AppLanguageStrings
     public string SettingsEsp32CardDescription { get; set; } = string.Empty;
     public string SettingsCleaningSection { get; set; } = string.Empty;
     public string SettingsCleaningCardDescription { get; set; } = string.Empty;
+    public string SettingsUpdatesSection { get; set; } = string.Empty;
+    public string SettingsUpdatesCardDescription { get; set; } = string.Empty;
+    public string SettingsUpdatesAvailableStatus { get; set; } = string.Empty;
+    public string SettingsUpdatesControlTitle { get; set; } = string.Empty;
+    public string SettingsUpdatesControlDescription { get; set; } = string.Empty;
+    public string SettingsUpdatesControlVersionFormat { get; set; } = string.Empty;
+    public string SettingsUpdatesEsp32Title { get; set; } = string.Empty;
+    public string SettingsUpdatesEsp32Description { get; set; } = string.Empty;
     public string SettingsContinuousCleaningDescription { get; set; } = string.Empty;
     public string SettingsPulsedCleaningDescription { get; set; } = string.Empty;
     public string SettingsPairingSection { get; set; } = string.Empty;
@@ -92,6 +106,8 @@ public sealed class AppLanguageStrings
     public string SettingsBillBaudPlaceholder { get; set; } = string.Empty;
     public string SettingsEsp32Enabled { get; set; } = string.Empty;
     public string SettingsEsp32AutoDiscover { get; set; } = string.Empty;
+    public string SettingsRuntimeDemoMode { get; set; } = string.Empty;
+    public string SettingsRuntimeDemoModeHint { get; set; } = string.Empty;
     public string SettingsEsp32PortLabel { get; set; } = string.Empty;
     public string SettingsEsp32BaudLabel { get; set; } = string.Empty;
     public string SettingsEsp32PortPlaceholder { get; set; } = string.Empty;
@@ -111,6 +127,7 @@ public sealed class AppLanguageStrings
     public string SettingsAdminPasscodeUpdatedStatus { get; set; } = string.Empty;
     public string SettingsAdminPasscodeDigitsOnlyStatus { get; set; } = string.Empty;
     public string SettingsAdminPasscodeTooShortStatus { get; set; } = string.Empty;
+    public string SettingsAdminPasscodeDefaultRejectedStatus { get; set; } = string.Empty;
     public string SettingsAdminPasscodeMismatchStatus { get; set; } = string.Empty;
     public string SettingsQrReadyStatus { get; set; } = string.Empty;
     public string SettingsContinuousCleaningStatus { get; set; } = string.Empty;
@@ -192,4 +209,25 @@ public sealed class AppLanguageStrings
     public string MobileSettingsStatusSaved { get; set; } = string.Empty;
     public string MobileSettingsStatusLoadError { get; set; } = string.Empty;
     public string MobileSettingsStatusSaveError { get; set; } = string.Empty;
+    public string MobileConnectionSectionTitle { get; set; } = string.Empty;
+    public string MobileConnectionSectionSubtitle { get; set; } = string.Empty;
+    public string MobileConnectionStrategyTitle { get; set; } = string.Empty;
+    public string MobileConnectionActiveModeTitle { get; set; } = string.Empty;
+    public string MobileConnectionActiveEndpointTitle { get; set; } = string.Empty;
+    public string MobileConnectionFallbackTitle { get; set; } = string.Empty;
+    public string MobileConnectionModeAutoTitle { get; set; } = string.Empty;
+    public string MobileConnectionModeAutoDescription { get; set; } = string.Empty;
+    public string MobileConnectionModeLocalTitle { get; set; } = string.Empty;
+    public string MobileConnectionModeLocalDescription { get; set; } = string.Empty;
+    public string MobileConnectionModeDirectTitle { get; set; } = string.Empty;
+    public string MobileConnectionModeDirectDescription { get; set; } = string.Empty;
+    public string MobileConnectionModeBridgeTitle { get; set; } = string.Empty;
+    public string MobileConnectionModeBridgeDescription { get; set; } = string.Empty;
+    public string MobileConnectionActiveUnknown { get; set; } = string.Empty;
+    public string MobileConnectionActiveLocal { get; set; } = string.Empty;
+    public string MobileConnectionActiveDirect { get; set; } = string.Empty;
+    public string MobileConnectionActiveBridge { get; set; } = string.Empty;
+    public string MobileConnectionLocalDetected { get; set; } = string.Empty;
+    public string MobileConnectionLocalNotDetected { get; set; } = string.Empty;
+    public string MobileConnectionEndpointMissing { get; set; } = string.Empty;
 }

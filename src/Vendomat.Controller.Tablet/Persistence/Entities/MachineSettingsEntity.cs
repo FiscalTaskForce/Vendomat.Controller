@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SQLite;
+using Vendomat.Controller.Domain.Enums;
 using Vendomat.Controller.Domain.Models;
 using Vendomat.Controller.Domain.Security;
 
@@ -28,6 +29,7 @@ public sealed class MachineSettingsEntity
     public string Esp32PortName { get; set; } = "/dev/ttyS3";
     public int Esp32BaudRate { get; set; } = 115200;
     public bool Esp32AutoDiscover { get; set; } = true;
+    public string RuntimeMode { get; set; } = Vendomat.Controller.Domain.Enums.RuntimeMode.Production.ToString();
     public string ContactPhone { get; set; } = string.Empty;
     public string ContactEmail { get; set; } = string.Empty;
     public string LocalApiBaseUrl { get; set; } = string.Empty;
@@ -63,6 +65,7 @@ public sealed class MachineSettingsEntity
             Esp32PortName = string.IsNullOrWhiteSpace(Esp32PortName) ? "/dev/ttyS3" : Esp32PortName,
             Esp32BaudRate = Esp32BaudRate <= 0 ? 115200 : Esp32BaudRate,
             Esp32AutoDiscover = hasLegacyEsp32Defaults || Esp32AutoDiscover,
+            RuntimeMode = ParseRuntimeMode(RuntimeMode),
             ContactPhone = ContactPhone,
             ContactEmail = ContactEmail,
             LocalApiBaseUrl = LocalApiBaseUrl,
@@ -96,6 +99,7 @@ public sealed class MachineSettingsEntity
         Esp32PortName = settings.Esp32PortName,
         Esp32BaudRate = settings.Esp32BaudRate,
         Esp32AutoDiscover = settings.Esp32AutoDiscover,
+        RuntimeMode = settings.RuntimeMode.ToString(),
         ContactPhone = settings.ContactPhone,
         ContactEmail = settings.ContactEmail,
         LocalApiBaseUrl = settings.LocalApiBaseUrl,
@@ -107,4 +111,9 @@ public sealed class MachineSettingsEntity
         PromoRotationTicks = settings.PromoRotationInterval.Ticks,
         CashChannelsJson = JsonSerializer.Serialize(settings.CashChannels),
     };
+
+    private static Vendomat.Controller.Domain.Enums.RuntimeMode ParseRuntimeMode(string? value) =>
+        Enum.TryParse<Vendomat.Controller.Domain.Enums.RuntimeMode>(value, ignoreCase: true, out var runtimeMode)
+            ? runtimeMode
+            : Vendomat.Controller.Domain.Enums.RuntimeMode.Production;
 }

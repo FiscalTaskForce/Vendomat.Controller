@@ -73,6 +73,9 @@ public partial class DashboardViewModel(
     private ObservableCollection<PromoSlide> promoSlides = [];
 
     [ObservableProperty]
+    private PromoSlide? currentPromoSlide;
+
+    [ObservableProperty]
     private LanguageOption? selectedLanguageOption;
 
     public IReadOnlyList<LanguageOption> AvailableLanguages => languageService.AvailableLanguages;
@@ -124,6 +127,19 @@ public partial class DashboardViewModel(
         return AdminPasscodeHasher.Verify(settings.AdminPasscodeHash, passcode);
     }
 
+    public async Task<bool> IsDefaultAdminPasscodeActiveAsync()
+    {
+        var settings = await machineRuntimeService.GetSettingsAsync();
+        return AdminPasscodeHasher.IsDefaultHash(settings.AdminPasscodeHash);
+    }
+
+    public async Task ChangeAdminPasscodeAsync(string passcode)
+    {
+        var settings = await machineRuntimeService.GetSettingsAsync();
+        settings.AdminPasscodeHash = AdminPasscodeHasher.Hash(passcode);
+        await machineRuntimeService.SaveSettingsAsync(settings);
+    }
+
     public Task StopAsync()
     {
         _refreshCancellationTokenSource?.Cancel();
@@ -141,6 +157,8 @@ public partial class DashboardViewModel(
 
         languageService.SetLanguage(value.Code);
     }
+
+    partial void OnCurrentPromoIndexChanged(int value) => UpdateCurrentPromoSlide();
 
     partial void OnSelectedPaymentMethodChanged(PaymentMethod value) => OnPropertyChanged(nameof(CanAdjustLiters));
 
@@ -281,6 +299,8 @@ public partial class DashboardViewModel(
                 Subtitle = x.Subtitle,
                 Badge = x.Badge,
             }));
+        CurrentPromoIndex = 0;
+        UpdateCurrentPromoSlide();
     }
 
     private async Task LoadStatusAsync()
@@ -353,6 +373,24 @@ public partial class DashboardViewModel(
         {
             CurrentPromoIndex = (CurrentPromoIndex + 1) % PromoSlides.Count;
         }
+    }
+
+    private void UpdateCurrentPromoSlide()
+    {
+        if (PromoSlides.Count == 0)
+        {
+            CurrentPromoSlide = null;
+            return;
+        }
+
+        var normalizedIndex = Math.Clamp(CurrentPromoIndex, 0, PromoSlides.Count - 1);
+        if (normalizedIndex != CurrentPromoIndex)
+        {
+            CurrentPromoIndex = normalizedIndex;
+            return;
+        }
+
+        CurrentPromoSlide = PromoSlides[normalizedIndex];
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)

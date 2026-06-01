@@ -117,7 +117,7 @@
                                                       CommandParameter="{Binding .}" />
                             </Border.GestureRecognizers>
 
-                            <Grid RowDefinitions="Auto,Auto,Auto"
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto"
                                   ColumnDefinitions="*,Auto,Auto"
                                   RowSpacing="8">
                                 <Label Text="{Binding MachineName}"
@@ -134,7 +134,26 @@
                                        Text="{Binding SnapshotSummary}"
                                        FontSize="14" />
 
-                                <Grid Grid.Row="2"
+                                <Border Grid.Row="2"
+                                        Grid.ColumnSpan="2"
+                                        Padding="10,6"
+                                        BackgroundColor="#EEF6FB"
+                                        StrokeThickness="0"
+                                        HorizontalOptions="Start">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label Text="{Binding ConnectionModeText}"
+                                               FontSize="12"
+                                               FontAttributes="Bold"
+                                               TextColor="#184A69" />
+                                        <Label Text="{Binding ApiBaseUrl}"
+                                               FontSize="11"
+                                               TextColor="{StaticResource Gray500}"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="1" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Grid Grid.Row="3"
                                       Grid.ColumnSpan="3"
                                       ColumnDefinitions="*,Auto,Auto"
                                       ColumnSpacing="10">

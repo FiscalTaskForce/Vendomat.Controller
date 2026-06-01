@@ -90,42 +90,38 @@
                     </Border>
                 </Grid>
 
-                <CarouselView x:Name="PromoCarousel"
-                              Grid.Row="1"
-                              Margin="0,18,0,18"
-                              ItemsSource="{Binding PromoSlides}"
-                              Position="{Binding CurrentPromoIndex}">
-                    <CarouselView.ItemTemplate>
-                        <DataTemplate x:DataType="models:PromoSlide">
-                            <Border BackgroundColor="#22FFFFFF"
-                                    Padding="24">
-                                <Grid RowDefinitions="Auto,*,Auto">
-                                    <Label Text="{Binding Badge}"
-                                           FontSize="12"
-                                           TextColor="{StaticResource MilkWhite}"
-                                           BackgroundColor="#33FFFFFF"
-                                           Padding="10,4"
-                                           HorizontalOptions="Start" />
-                                    <VerticalStackLayout Grid.Row="1"
-                                                         VerticalOptions="Center"
-                                                         Spacing="12">
-                                        <Label Text="{Binding Title}"
-                                               FontSize="30"
-                                               FontAttributes="Bold"
-                                               TextColor="{StaticResource MilkWhite}" />
-                                        <Label Text="{Binding Subtitle}"
-                                               FontSize="16"
-                                               TextColor="#F5F7FA" />
-                                    </VerticalStackLayout>
-                                    <Label Grid.Row="2"
-                                           Text="{localization:Translate DashboardPromoPlaceholder}"
-                                           FontSize="13"
-                                           TextColor="#DDE8F0" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </CarouselView.ItemTemplate>
-                </CarouselView>
+                <Border x:Name="PromoCard"
+                        Grid.Row="1"
+                        Margin="0,18,0,18"
+                        BackgroundColor="#22FFFFFF"
+                        Padding="24"
+                        RotationY="0"
+                        AnchorX="0.5"
+                        AnchorY="0.5">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <Label Text="{Binding CurrentPromoSlide.Badge, TargetNullValue=''}"
+                               FontSize="12"
+                               TextColor="{StaticResource MilkWhite}"
+                               BackgroundColor="#33FFFFFF"
+                               Padding="10,4"
+                               HorizontalOptions="Start" />
+                        <VerticalStackLayout Grid.Row="1"
+                                             VerticalOptions="Center"
+                                             Spacing="12">
+                            <Label Text="{Binding CurrentPromoSlide.Title, TargetNullValue=''}"
+                                   FontSize="30"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource MilkWhite}" />
+                            <Label Text="{Binding CurrentPromoSlide.Subtitle, TargetNullValue=''}"
+                                   FontSize="16"
+                                   TextColor="#F5F7FA" />
+                        </VerticalStackLayout>
+                        <Label Grid.Row="2"
+                               Text="{localization:Translate DashboardPromoPlaceholder}"
+                               FontSize="13"
+                               TextColor="#DDE8F0" />
+                    </Grid>
+                </Border>
 
                 <IndicatorView Grid.Row="2"
                                ItemsSource="{Binding PromoSlides}"

@@ -45,19 +45,19 @@ This keeps users separated without needing a heavy multi-tenant identity platfor
 
 This is intentionally cheaper than permanent high-frequency polling and simpler than requiring inbound connectivity to the tablet.
 
-## Deployment note for signal.dllsoft.ro
+## Deployment note for vending.dllsoft.ro
 
 - The new project is `src/Vendomat.Controller.Cloud`
-- It can be published to `\\192.168.100.2\wwwroot\erp`
-- If the IIS app is served under `/erp`, set `Cloud:PathBase=/erp`
+- It can be published to the IIS site that serves `https://vending.dllsoft.ro/`
+- Keep `Cloud:PathBase` empty when the app is served from domain root
 
 Recommended public URL:
 
-- `https://signal.dllsoft.ro/erp`
+- `https://vending.dllsoft.ro`
 
 Recommended tablet setting:
 
-- `CloudApiBaseUrl = https://signal.dllsoft.ro/erp`
+- `CloudApiBaseUrl = https://vending.dllsoft.ro`
 
 ## Current limitation
 

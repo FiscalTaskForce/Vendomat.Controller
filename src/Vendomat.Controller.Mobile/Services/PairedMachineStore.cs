@@ -3,7 +3,7 @@ using Vendomat.Controller.Mobile.Models;
 
 namespace Vendomat.Controller.Mobile.Services;
 
-public sealed class PairedMachineStore
+public sealed class PairedMachineStore(DeviceSecretStore deviceSecretStore)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web)
@@ -54,10 +54,16 @@ public sealed class PairedMachineStore
                 existing.MachineName = record.MachineName;
                 existing.ApiBaseUrl = record.ApiBaseUrl;
                 existing.LocalApiBaseUrl = record.LocalApiBaseUrl;
+                existing.LocalSecureApiBaseUrl = record.LocalSecureApiBaseUrl;
+                existing.LocalCertificateFingerprint = record.LocalCertificateFingerprint;
                 existing.PublicApiBaseUrl = record.PublicApiBaseUrl;
                 existing.CloudApiBaseUrl = record.CloudApiBaseUrl;
                 existing.CompanionAccessToken = record.CompanionAccessToken;
                 existing.PairingCode = record.PairingCode;
+                existing.PreferredConnectionPreference = record.PreferredConnectionPreference;
+                existing.LastConnectionMode = record.LastConnectionMode;
+                existing.LastConnectionEndpoint = record.LastConnectionEndpoint;
+                existing.LastConnectionCheckedUtc = record.LastConnectionCheckedUtc;
                 existing.AddedAtUtc = record.AddedAtUtc;
                 existing.LastSeenUtc = record.LastSeenUtc;
                 existing.LastSeenOnline = record.LastSeenOnline;
@@ -97,13 +103,47 @@ public sealed class PairedMachineStore
         }
 
         await using var stream = File.OpenRead(FilePath);
-        return await JsonSerializer.DeserializeAsync<List<PairedMachineRecord>>(stream, _serializerOptions, cancellationToken) ?? [];
+        var records = await JsonSerializer.DeserializeAsync<List<PairedMachineRecord>>(stream, _serializerOptions, cancellationToken) ?? [];
+        foreach (var record in records)
+        {
+            record.CompanionAccessToken = await deviceSecretStore.UnprotectAsync(record.CompanionAccessToken);
+        }
+
+        return records;
     }
 
     private async Task SaveCoreAsync(List<PairedMachineRecord> records, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        var persistedRecords = new List<PairedMachineRecord>(records.Count);
+        foreach (var record in records)
+        {
+            persistedRecords.Add(new PairedMachineRecord
+            {
+                MachineId = record.MachineId,
+                MachineName = record.MachineName,
+                ApiBaseUrl = record.ApiBaseUrl,
+                LocalApiBaseUrl = record.LocalApiBaseUrl,
+                LocalSecureApiBaseUrl = record.LocalSecureApiBaseUrl,
+                LocalCertificateFingerprint = record.LocalCertificateFingerprint,
+                PublicApiBaseUrl = record.PublicApiBaseUrl,
+                CloudApiBaseUrl = record.CloudApiBaseUrl,
+                CompanionAccessToken = await deviceSecretStore.ProtectAsync(record.CompanionAccessToken),
+                PairingCode = record.PairingCode,
+                PreferredConnectionPreference = record.PreferredConnectionPreference,
+                LastConnectionMode = record.LastConnectionMode,
+                LastConnectionEndpoint = record.LastConnectionEndpoint,
+                LastConnectionCheckedUtc = record.LastConnectionCheckedUtc,
+                AddedAtUtc = record.AddedAtUtc,
+                LastSeenUtc = record.LastSeenUtc,
+                LastSeenOnline = record.LastSeenOnline,
+                LastKnownStockLiters = record.LastKnownStockLiters,
+                LastKnownTemperatureCelsius = record.LastKnownTemperatureCelsius,
+                LastKnownPricePerLiter = record.LastKnownPricePerLiter,
+            });
+        }
+
         await using var stream = File.Create(FilePath);
-        await JsonSerializer.SerializeAsync(stream, records, _serializerOptions, cancellationToken);
+        await JsonSerializer.SerializeAsync(stream, persistedRecords, _serializerOptions, cancellationToken);
     }
 }

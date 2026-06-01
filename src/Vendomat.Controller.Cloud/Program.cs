@@ -7,6 +7,8 @@ using Vendomat.Controller.Domain.Models;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<CloudStore>();
 builder.Services.AddSingleton<CloudTunnelBroker>();
+builder.Services.AddSingleton<PairingClaimRateLimiter>();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
@@ -17,6 +19,7 @@ if (!string.IsNullOrWhiteSpace(configuredPathBase))
 }
 
 app.UseWebSockets();
+app.MapOpenApi();
 
 app.Use(async (context, next) =>
 {
@@ -113,11 +116,7 @@ app.MapGet("/", async (CloudStore store, CancellationToken cancellationToken) =>
 app.MapGet("/api/health", async (CloudStore store, CancellationToken cancellationToken) =>
 {
     await store.InitializeAsync(cancellationToken);
-    return Results.Ok(new
-    {
-        status = "online",
-        timestampUtc = DateTimeOffset.UtcNow,
-    });
+    return Results.Ok(await store.GetOperationalHealthAsync(cancellationToken));
 });
 
 app.MapPost("/api/cloud/machine/pairing", async (CloudPairingUpsertRequest request, CloudStore store, CancellationToken cancellationToken) =>
@@ -142,10 +141,58 @@ app.MapPost("/api/cloud/machine/commands/complete", async (CloudCommandCompletio
     return Results.Ok(new { status = "accepted" });
 });
 
-app.MapPost("/api/pairing/claim", async (HttpRequest httpRequest, PairingClaimRequest request, CloudStore store, CancellationToken cancellationToken) =>
+app.MapPost("/api/cloud/machine/companions", async (CloudMachineCompanionSessionsRequest request, CloudStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetCompanionSessionsAsync(request.MachineId, request.MachineToken, cancellationToken)));
+
+app.MapPost("/api/cloud/machine/companions/revoke", async (CloudCompanionSessionRevokeRequest request, CloudStore store, CancellationToken cancellationToken) =>
+    Results.Ok(new
+    {
+        revokedCount = await store.RevokeCompanionSessionsAsync(
+            request.MachineId,
+            request.MachineToken,
+            request.CompanionTokenPrefix,
+            cancellationToken),
+    }));
+
+app.MapPost("/api/cloud/machine/companions/revoke-all", async (CloudMachineCompanionSessionsRequest request, CloudStore store, CancellationToken cancellationToken) =>
+    Results.Ok(new
+    {
+        revokedCount = await store.RevokeCompanionSessionsAsync(
+            request.MachineId,
+            request.MachineToken,
+            companionTokenPrefix: null,
+            cancellationToken),
+    }));
+
+app.MapPost("/api/pairing/claim", async Task<IResult> (
+    HttpRequest httpRequest,
+    PairingClaimRequest request,
+    CloudStore store,
+    PairingClaimRateLimiter rateLimiter,
+    CancellationToken cancellationToken) =>
 {
     var currentBaseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}{httpRequest.PathBase}";
-    return Results.Ok(await store.ClaimPairingAsync(request, currentBaseUrl, cancellationToken));
+    var remoteAddress = httpRequest.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    if (!rateLimiter.IsAllowed(remoteAddress, request.MachineId, out var retryAfter))
+    {
+        return Results.Json(new
+        {
+            error = "pairing_locked",
+            retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)),
+        }, statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    try
+    {
+        var result = await store.ClaimPairingAsync(request, currentBaseUrl, cancellationToken);
+        rateLimiter.RecordSuccess(remoteAddress, request.MachineId);
+        return Results.Ok(result);
+    }
+    catch (InvalidOperationException)
+    {
+        rateLimiter.RecordFailure(remoteAddress, request.MachineId);
+        throw;
+    }
 });
 
 app.MapGet("/api/device/status", async (HttpRequest request, CloudStore store, CancellationToken cancellationToken) =>

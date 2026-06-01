@@ -29,6 +29,7 @@ public static class MauiProgram
 #endif
 
         builder.Services.AddSingleton<LanguageService>();
+        builder.Services.AddSingleton<DeviceSecretStore>();
         builder.Services.AddSingleton<PairedMachineStore>();
         builder.Services.AddSingleton<HttpClient>();
         builder.Services.AddSingleton<VendomatRemoteClient>();

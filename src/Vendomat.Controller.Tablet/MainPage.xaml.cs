@@ -1,6 +1,7 @@
 using Vendomat.Controller.Tablet.Pages;
 using Vendomat.Controller.Tablet.ViewModels;
 using Vendomat.Controller.Client.Localization;
+using System.ComponentModel;
 
 namespace Vendomat.Controller.Tablet;
 
@@ -12,8 +13,11 @@ public partial class MainPage : ContentPage
     private static readonly Color AdminHotspotReadyColor = Color.FromArgb("#8835B36B");
 
     private CancellationTokenSource? _adminHotspotHoldCancellationTokenSource;
+    private bool _isPromoFlipAnimating;
     private bool _adminHotspotHoldCompleted;
     private string _enteredAdminPasscode = string.Empty;
+    private string _newAdminPasscode = string.Empty;
+    private AdminPromptMode _adminPromptMode = AdminPromptMode.Unlock;
 
     private DashboardViewModel ViewModel => (DashboardViewModel)BindingContext;
 
@@ -21,6 +25,7 @@ public partial class MainPage : ContentPage
     {
         InitializeComponent();
         BindingContext = ServiceRegistry.GetRequiredService<DashboardViewModel>();
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
     protected override async void OnAppearing()
@@ -36,6 +41,43 @@ public partial class MainPage : ContentPage
         await ViewModel.StopAsync();
         base.OnDisappearing();
     }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DashboardViewModel.CurrentPromoIndex))
+        {
+            _ = AnimatePromoFlipAsync();
+        }
+    }
+
+    private async Task AnimatePromoFlipAsync()
+    {
+        if (_isPromoFlipAnimating || PromoSlidesCountIsTooSmall())
+        {
+            return;
+        }
+
+        _isPromoFlipAnimating = true;
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                PromoCard.InputTransparent = true;
+                await PromoCard.RotateYToAsync(90, 260, Easing.CubicIn);
+                PromoCard.Opacity = 0.92;
+                PromoCard.RotationY = -90;
+                await PromoCard.RotateYToAsync(0, 320, Easing.CubicOut);
+                PromoCard.Opacity = 1;
+                PromoCard.InputTransparent = false;
+            });
+        }
+        finally
+        {
+            _isPromoFlipAnimating = false;
+        }
+    }
+
+    private bool PromoSlidesCountIsTooSmall() => ViewModel.PromoSlides.Count <= 1;
 
     private void OnAdminHotspotPressed(object? sender, EventArgs e)
     {
@@ -64,10 +106,10 @@ public partial class MainPage : ContentPage
         {
             await Task.Delay(AdminHotspotHoldDuration, cancellationToken);
             _adminHotspotHoldCompleted = true;
-            await MainThread.InvokeOnMainThreadAsync(() =>
+            await MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 ShowAdminHotspotCue(AdminHotspotReadyColor);
-                ShowAdminPrompt();
+                await ShowAdminPromptAsync();
             });
         }
         catch (OperationCanceledException)
@@ -112,6 +154,42 @@ public partial class MainPage : ContentPage
 
     private async void OnAdminConfirmClicked(object? sender, EventArgs e)
     {
+        if (_adminPromptMode == AdminPromptMode.ForceNewPasscode)
+        {
+            if (!TryAcceptNewAdminPasscode())
+            {
+                return;
+            }
+
+            _adminPromptMode = AdminPromptMode.ForceConfirmPasscode;
+            _enteredAdminPasscode = string.Empty;
+            UpdateAdminPromptDisplay();
+            return;
+        }
+
+        if (_adminPromptMode == AdminPromptMode.ForceConfirmPasscode)
+        {
+            if (!string.Equals(_enteredAdminPasscode, _newAdminPasscode, StringComparison.Ordinal))
+            {
+                _enteredAdminPasscode = string.Empty;
+                UpdateAdminPromptDisplay(
+                    T(nameof(AppLanguageStrings.DashboardAdminChangeMismatch)),
+                    GetColorResource("Danger", Colors.IndianRed));
+                return;
+            }
+
+            await ViewModel.ChangeAdminPasscodeAsync(_newAdminPasscode);
+            HideAdminPrompt();
+            await Shell.Current.GoToAsync(nameof(SettingsPage));
+            return;
+        }
+
+        if (await ViewModel.IsDefaultAdminPasscodeActiveAsync())
+        {
+            BeginForcedAdminPasscodeChange();
+            return;
+        }
+
         var isValid = await ViewModel.VerifyAdminPasscodeAsync(_enteredAdminPasscode);
         if (!isValid)
         {
@@ -126,10 +204,14 @@ public partial class MainPage : ContentPage
         await Shell.Current.GoToAsync(nameof(SettingsPage));
     }
 
-    private void ShowAdminPrompt()
+    private async Task ShowAdminPromptAsync()
     {
         HideAdminHotspotCue();
         _enteredAdminPasscode = string.Empty;
+        _newAdminPasscode = string.Empty;
+        _adminPromptMode = await ViewModel.IsDefaultAdminPasscodeActiveAsync()
+            ? AdminPromptMode.ForceNewPasscode
+            : AdminPromptMode.Unlock;
         AdminPromptOverlay.IsVisible = true;
         UpdateAdminPromptDisplay();
     }
@@ -138,6 +220,8 @@ public partial class MainPage : ContentPage
     {
         HideAdminHotspotCue();
         _enteredAdminPasscode = string.Empty;
+        _newAdminPasscode = string.Empty;
+        _adminPromptMode = AdminPromptMode.Unlock;
         AdminPromptOverlay.IsVisible = false;
         UpdateAdminPromptDisplay();
     }
@@ -148,8 +232,56 @@ public partial class MainPage : ContentPage
             ? "----"
             : new string('*', _enteredAdminPasscode.Length);
 
-        AdminPromptStatusLabel.Text = statusText ?? T(nameof(AppLanguageStrings.DashboardAdminUnlockPlaceholder));
+        AdminPromptStatusLabel.Text = statusText ?? T(_adminPromptMode switch
+        {
+            AdminPromptMode.ForceNewPasscode => nameof(AppLanguageStrings.DashboardAdminChangeRequired),
+            AdminPromptMode.ForceConfirmPasscode => nameof(AppLanguageStrings.DashboardAdminChangeConfirm),
+            _ => nameof(AppLanguageStrings.DashboardAdminUnlockPlaceholder),
+        });
         AdminPromptStatusLabel.TextColor = statusColor ?? GetColorResource("MutedInk", Colors.Gray);
+    }
+
+    private void BeginForcedAdminPasscodeChange()
+    {
+        _adminPromptMode = AdminPromptMode.ForceNewPasscode;
+        _enteredAdminPasscode = string.Empty;
+        _newAdminPasscode = string.Empty;
+        UpdateAdminPromptDisplay(
+            T(nameof(AppLanguageStrings.DashboardAdminChangeRequired)),
+            GetColorResource("AccentAmber", Colors.DarkOrange));
+    }
+
+    private bool TryAcceptNewAdminPasscode()
+    {
+        if (_enteredAdminPasscode.Length < 4)
+        {
+            _enteredAdminPasscode = string.Empty;
+            UpdateAdminPromptDisplay(
+                T(nameof(AppLanguageStrings.DashboardAdminChangeTooShort)),
+                GetColorResource("Danger", Colors.IndianRed));
+            return false;
+        }
+
+        if (!_enteredAdminPasscode.All(char.IsDigit))
+        {
+            _enteredAdminPasscode = string.Empty;
+            UpdateAdminPromptDisplay(
+                T(nameof(AppLanguageStrings.DashboardAdminChangeDigitsOnly)),
+                GetColorResource("Danger", Colors.IndianRed));
+            return false;
+        }
+
+        if (string.Equals(_enteredAdminPasscode, Vendomat.Controller.Domain.Security.AdminPasscodeHasher.DefaultPasscode, StringComparison.Ordinal))
+        {
+            _enteredAdminPasscode = string.Empty;
+            UpdateAdminPromptDisplay(
+                T(nameof(AppLanguageStrings.DashboardAdminDefaultPasscodeBlocked)),
+                GetColorResource("Danger", Colors.IndianRed));
+            return false;
+        }
+
+        _newAdminPasscode = _enteredAdminPasscode;
+        return true;
     }
 
     private void CancelAdminHotspotHold()
@@ -186,5 +318,12 @@ public partial class MainPage : ContentPage
         }
 
         return fallbackColor;
+    }
+
+    private enum AdminPromptMode
+    {
+        Unlock,
+        ForceNewPasscode,
+        ForceConfirmPasscode,
     }
 }

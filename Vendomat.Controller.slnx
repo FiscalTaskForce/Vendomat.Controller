@@ -7,4 +7,9 @@
     <Project Path="src/Vendomat.Controller.Mobile/Vendomat.Controller.Mobile.csproj" />
     <Project Path="src/Vendomat.Controller.Tablet/Vendomat.Controller.Tablet.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Vendomat.Controller.Application.Tests/Vendomat.Controller.Application.Tests.csproj" />
+    <Project Path="tests/Vendomat.Controller.Cloud.Tests/Vendomat.Controller.Cloud.Tests.csproj" />
+    <Project Path="tests/Vendomat.Controller.Domain.Tests/Vendomat.Controller.Domain.Tests.csproj" />
+  </Folder>
 </Solution>

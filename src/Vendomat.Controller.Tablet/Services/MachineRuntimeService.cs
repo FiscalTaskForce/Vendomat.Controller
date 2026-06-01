@@ -9,6 +9,11 @@ namespace Vendomat.Controller.Tablet.Services;
 
 public sealed class MachineRuntimeService : IMachineRuntimeService
 {
+    private const string RemoteCreditCommandType = "remote-credit";
+    private const string DispenseCommandType = "dispense";
+    private const string SanitationCommandType = "sanitation";
+    private const string Esp32FirmwareUpdateCommandType = "esp32-firmware-update";
+
     private readonly IMachineSettingsRepository _settingsRepository;
     private readonly ISalesRepository _salesRepository;
     private readonly ILogRepository _logRepository;
@@ -16,6 +21,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
     private readonly IPairingService _pairingService;
     private readonly IBillValidatorGateway _billValidatorGateway;
     private readonly IEsp32Gateway _esp32Gateway;
+    private readonly RemoteCommandJournal _remoteCommandJournal;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly SensorSnapshot _sensor = new();
     private readonly SemaphoreSlim _validatorStartLock = new(1, 1);
@@ -33,6 +39,10 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
     private DateTimeOffset _nextEsp32StartAttemptUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastRealSensorUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispenseProgressUtc = DateTimeOffset.MinValue;
+    private readonly Dictionary<Guid, DateTimeOffset> _executedCommandIds = [];
+    private SaleTransaction? _activeSale;
+    private MachineSettings? _activeDispenseSettings;
+    private Guid? _activeDispenseCommandId;
 
     public MachineRuntimeService(
         IMachineSettingsRepository settingsRepository,
@@ -41,7 +51,8 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         ISanitationRepository sanitationRepository,
         IPairingService pairingService,
         IBillValidatorGateway billValidatorGateway,
-        IEsp32Gateway esp32Gateway)
+        IEsp32Gateway esp32Gateway,
+        RemoteCommandJournal remoteCommandJournal)
     {
         _settingsRepository = settingsRepository;
         _salesRepository = salesRepository;
@@ -50,6 +61,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         _pairingService = pairingService;
         _billValidatorGateway = billValidatorGateway;
         _esp32Gateway = esp32Gateway;
+        _remoteCommandJournal = remoteCommandJournal;
 
         _billValidatorGateway.NoteRead += OnBillValidatorNoteRead;
         _billValidatorGateway.CreditAccepted += OnBillValidatorCreditAccepted;
@@ -146,6 +158,22 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
     public async Task SaveSettingsAsync(MachineSettings settings, CancellationToken cancellationToken = default)
     {
+        var existingSettings = await _settingsRepository.GetAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(settings.CloudMachineToken))
+        {
+            settings.CloudMachineToken = existingSettings.CloudMachineToken;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.CompanionAccessToken))
+        {
+            settings.CompanionAccessToken = existingSettings.CompanionAccessToken;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.AdminPasscodeHash))
+        {
+            settings.AdminPasscodeHash = existingSettings.AdminPasscodeHash;
+        }
+
         NormalizeSettings(settings);
         ApplyLegacyBillValidatorCompatibility(settings);
         await _settingsRepository.SaveAsync(settings, cancellationToken);
@@ -279,131 +307,242 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         await ApplyCreditAsync(amount, settings, cancellationToken);
     }
 
-    public async Task AddRemoteCreditAsync(decimal amount, CancellationToken cancellationToken = default)
+    public Task AddRemoteCreditAsync(decimal amount, CancellationToken cancellationToken = default) =>
+        AddRemoteCreditAsync(new RemoteCreditRequest { Amount = amount }, cancellationToken);
+
+    public async Task AddRemoteCreditAsync(RemoteCreditRequest request, CancellationToken cancellationToken = default)
     {
-        if (amount < 0)
+        if (!await TryBeginCommandAsync(request.CommandId, RemoteCreditCommandType, request, cancellationToken))
         {
-            throw new InvalidOperationException("Valoarea creditului nu poate fi negativa.");
+            return;
         }
 
-        var settings = await GetCompatibleSettingsAsync(cancellationToken);
-        await ApplyCreditAsync(amount, settings, cancellationToken, replaceExisting: true);
-
-        await SafeLogAsync(new DeviceLogEntry
+        try
         {
-            Category = "RemoteCredit",
-            Message = $"Credit remote setat din companion: {amount:0.00} RON.",
-        }, cancellationToken);
+            var amount = request.Amount;
+            if (amount < 0)
+            {
+                throw new InvalidOperationException("Valoarea creditului nu poate fi negativa.");
+            }
+
+            var settings = await GetCompatibleSettingsAsync(cancellationToken);
+            await ApplyCreditAsync(amount, settings, cancellationToken, replaceExisting: true);
+
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = "RemoteCredit",
+                Message = $"Credit remote setat din companion: {amount:0.00} RON.",
+            }, cancellationToken);
+            await _remoteCommandJournal.CompleteAsync(request.CommandId, $"Credit actualizat la {amount:0.00} RON.", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _remoteCommandJournal.FailAsync(request.CommandId, ex.Message, cancellationToken);
+            throw;
+        }
     }
 
     public async Task StartDispenseAsync(DispenseCommand command, CancellationToken cancellationToken = default)
     {
-        var settings = await GetCompatibleSettingsAsync(cancellationToken);
-        var requestedLiters = Math.Round(command.RequestedLiters, 2);
-
-        if (command.PaymentMethod == PaymentMethod.Cash && !settings.CashPaymentEnabled)
+        if (!await TryBeginCommandAsync(command.CommandId, DispenseCommandType, command, cancellationToken))
         {
-            throw new InvalidOperationException("Plata cu numerar este dezactivata.");
+            return;
         }
 
-        if (command.PaymentMethod == PaymentMethod.Card && !settings.CardPaymentEnabled)
-        {
-            throw new InvalidOperationException("Plata cu cardul este dezactivata.");
-        }
-
-        if (requestedLiters <= 0)
-        {
-            throw new InvalidOperationException("Selecteaza cantitatea inainte de start.");
-        }
-
-        if (command.PaymentMethod == PaymentMethod.Cash && command.CreditAmount < requestedLiters * settings.PricePerLiter)
-        {
-            throw new InvalidOperationException("Creditul introdus este insuficient pentru cantitatea selectata.");
-        }
-
-        await _sync.WaitAsync(cancellationToken);
         try
         {
-            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning)
+            var settings = await GetCompatibleSettingsAsync(cancellationToken);
+            var requestedLiters = Math.Round(command.RequestedLiters, 2);
+
+            if (command.PaymentMethod == PaymentMethod.Cash && !settings.CashPaymentEnabled)
             {
-                throw new InvalidOperationException("Masina executa deja o operatie.");
+                throw new InvalidOperationException("Plata cu numerar este dezactivata.");
             }
 
-            _session.ActivityState = MachineActivityState.Dispensing;
-            _session.ActivePaymentMethod = command.PaymentMethod;
-            _session.RequestedLiters = requestedLiters;
-            _session.TotalAmount = Math.Round(requestedLiters * settings.PricePerLiter, 2);
-            _session.DispensedLiters = 0;
-            _lastDispenseProgressUtc = DateTimeOffset.MinValue;
-        }
-        finally
-        {
-            _sync.Release();
-        }
+            if (command.PaymentMethod == PaymentMethod.Card && !settings.CardPaymentEnabled)
+            {
+                throw new InvalidOperationException("Plata cu cardul este dezactivata.");
+            }
 
-        var sale = new SaleTransaction
-        {
-            MachineId = settings.MachineId,
-            RequestedLiters = requestedLiters,
-            PricePerLiter = settings.PricePerLiter,
-            TotalAmount = Math.Round(requestedLiters * settings.PricePerLiter, 2),
-            PaymentMethod = command.PaymentMethod,
-        };
+            if (requestedLiters <= 0)
+            {
+                throw new InvalidOperationException("Selecteaza cantitatea inainte de start.");
+            }
 
-        EnsureEsp32Started();
-        _ = Task.Run(() => TrySendDispenseCommandAsync(settings, requestedLiters), CancellationToken.None);
-        _ = Task.Run(() => SimulateDispenseAsync(settings, sale), CancellationToken.None);
+            if (command.PaymentMethod == PaymentMethod.Cash && command.CreditAmount < requestedLiters * settings.PricePerLiter)
+            {
+                throw new InvalidOperationException("Creditul introdus este insuficient pentru cantitatea selectata.");
+            }
+
+            if (settings.RuntimeMode == RuntimeMode.Production && !settings.Esp32Enabled)
+            {
+                throw new InvalidOperationException("Dozarea in Production necesita ESP32 activ.");
+            }
+
+            var sale = new SaleTransaction
+            {
+                MachineId = settings.MachineId,
+                RequestedLiters = requestedLiters,
+                PricePerLiter = settings.PricePerLiter,
+                TotalAmount = Math.Round(requestedLiters * settings.PricePerLiter, 2),
+                PaymentMethod = command.PaymentMethod,
+            };
+
+            await _sync.WaitAsync(cancellationToken);
+            try
+            {
+                if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning)
+                {
+                    throw new InvalidOperationException("Masina executa deja o operatie.");
+                }
+
+                _session.ActivityState = MachineActivityState.Dispensing;
+                _session.ActivePaymentMethod = command.PaymentMethod;
+                _session.RequestedLiters = requestedLiters;
+                _session.TotalAmount = Math.Round(requestedLiters * settings.PricePerLiter, 2);
+                _session.DispensedLiters = 0;
+                _lastDispenseProgressUtc = DateTimeOffset.MinValue;
+                _activeSale = sale;
+                _activeDispenseSettings = Clone(settings);
+                _activeDispenseCommandId = command.CommandId;
+            }
+            finally
+            {
+                _sync.Release();
+            }
+
+            EnsureEsp32Started();
+            var commandSent = await TrySendDispenseCommandAsync(settings, requestedLiters);
+            if (settings.RuntimeMode == RuntimeMode.Production)
+            {
+                if (!commandSent)
+                {
+                    await FailActiveDispenseAsync(settings, sale, "Comanda ESP32 nu a putut fi trimisa.", cancellationToken);
+                    throw new InvalidOperationException("Comanda ESP32 nu a putut fi trimisa.");
+                }
+
+                return;
+            }
+
+            _ = Task.Run(() => SimulateDispenseAsync(settings, sale), CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            await _remoteCommandJournal.FailAsync(command.CommandId, ex.Message, cancellationToken);
+            throw;
+        }
     }
 
     public async Task RunSanitationAsync(SanitationRequest request, CancellationToken cancellationToken = default)
     {
-        var settings = await GetCompatibleSettingsAsync(cancellationToken);
+        if (!await TryBeginCommandAsync(request.CommandId, SanitationCommandType, request, cancellationToken))
+        {
+            return;
+        }
 
-        await _sync.WaitAsync(cancellationToken);
         try
         {
-            if (_session.ActivityState == MachineActivityState.Dispensing)
+            var settings = await GetCompatibleSettingsAsync(cancellationToken);
+
+            await _sync.WaitAsync(cancellationToken);
+            try
             {
-                throw new InvalidOperationException("Curatarea nu poate porni in timpul unei dozari.");
+                if (_session.ActivityState == MachineActivityState.Dispensing)
+                {
+                    throw new InvalidOperationException("Curatarea nu poate porni in timpul unei dozari.");
+                }
+
+                _session.ActivityState = MachineActivityState.Cleaning;
+            }
+            finally
+            {
+                _sync.Release();
             }
 
-            _session.ActivityState = MachineActivityState.Cleaning;
+            EnsureEsp32Started();
+            _ = Task.Run(() => TrySendSanitationCommandAsync(request), CancellationToken.None);
+
+            await _sanitationRepository.SaveAsync(new SanitationRecord
+            {
+                MachineId = settings.MachineId,
+                Duration = request.Duration,
+                Mode = request.Mode,
+                PulseOn = request.PulseOn,
+                PulseOff = request.PulseOff,
+                Notes = "Rulat din interfata locala a controllerului.",
+            }, cancellationToken);
+
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = "Sanitation",
+                Message = $"Curatare pornita in mod {request.Mode}.",
+            }, cancellationToken);
+
+            await Task.Delay(request.Duration, cancellationToken);
+
+            await _sync.WaitAsync(cancellationToken);
+            try
+            {
+                _session.ActivityState = MachineActivityState.Ready;
+                _session.ActivePaymentMethod = ResolveDefaultPaymentMethod(settings);
+            }
+            finally
+            {
+                _sync.Release();
+            }
+
+            await _remoteCommandJournal.CompleteAsync(request.CommandId, $"Curatare {request.Mode} finalizata.", cancellationToken);
         }
-        finally
+        catch (Exception ex)
         {
-            _sync.Release();
+            await _remoteCommandJournal.FailAsync(request.CommandId, ex.Message, cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task UpdateEsp32FirmwareAsync(Esp32FirmwareUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await TryBeginCommandAsync(request.CommandId, Esp32FirmwareUpdateCommandType, request, cancellationToken))
+        {
+            return;
         }
 
-        EnsureEsp32Started();
-        _ = Task.Run(() => TrySendSanitationCommandAsync(request), CancellationToken.None);
-
-        await _sanitationRepository.SaveAsync(new SanitationRecord
-        {
-            MachineId = settings.MachineId,
-            Duration = request.Duration,
-            Mode = request.Mode,
-            PulseOn = request.PulseOn,
-            PulseOff = request.PulseOff,
-            Notes = "Rulat din interfata locala a controllerului.",
-        }, cancellationToken);
-
-        await SafeLogAsync(new DeviceLogEntry
-        {
-            Category = "Sanitation",
-            Message = $"Curatare pornita in mod {request.Mode}.",
-        }, cancellationToken);
-
-        await Task.Delay(request.Duration, cancellationToken);
-
-        await _sync.WaitAsync(cancellationToken);
         try
         {
-            _session.ActivityState = MachineActivityState.Ready;
-            _session.ActivePaymentMethod = ResolveDefaultPaymentMethod(settings);
+            if (request is null)
+            {
+                throw new InvalidOperationException("Cererea OTA pentru ESP32 lipseste.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FirmwareUrl))
+            {
+                throw new InvalidOperationException("URL-ul firmware-ului ESP32 este obligatoriu.");
+            }
+
+            var settings = await GetCompatibleSettingsAsync(cancellationToken);
+            if (!settings.Esp32Enabled)
+            {
+                throw new InvalidOperationException("ESP32 este dezactivat din setari.");
+            }
+
+            EnsureEsp32Started(force: true);
+            await _esp32Gateway.SendFirmwareUpdateAsync(request, cancellationToken);
+
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = "ESP32",
+                Message = $"Update OTA trimis catre ESP32: {request.FirmwareUrl}",
+            }, cancellationToken);
+
+            await _remoteCommandJournal.CompleteAsync(
+                request.CommandId,
+                "Cererea de update OTA a fost trimisa catre ESP32. Verifica revenirea dispozitivului dupa reboot.",
+                cancellationToken);
         }
-        finally
+        catch (Exception ex)
         {
-            _sync.Release();
+            await _remoteCommandJournal.FailAsync(request.CommandId, ex.Message, cancellationToken);
+            throw;
         }
     }
 
@@ -761,6 +900,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
     private async Task HandleEsp32DispenseCompletedAsync()
     {
+        SaleTransaction? sale = null;
+        MachineSettings? settings = null;
+
         await _sync.WaitAsync();
         try
         {
@@ -768,11 +910,22 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             {
                 _session.DispensedLiters = _session.RequestedLiters;
                 _lastDispenseProgressUtc = DateTimeOffset.UtcNow;
+                sale = _activeSale;
+                settings = _activeDispenseSettings;
             }
         }
         finally
         {
             _sync.Release();
+        }
+
+        if (sale is not null && settings is not null && settings.RuntimeMode == RuntimeMode.Production)
+        {
+            await CompleteDispenseAsync(
+                settings,
+                sale,
+                sale.RequestedLiters,
+                $"Dozare confirmata de ESP32: {sale.RequestedLiters:0.##} L / {sale.TotalAmount:0.00} RON.");
         }
     }
 
@@ -811,11 +964,11 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         }
     }
 
-    private async Task TrySendDispenseCommandAsync(MachineSettings settings, decimal requestedLiters)
+    private async Task<bool> TrySendDispenseCommandAsync(MachineSettings settings, decimal requestedLiters)
     {
         if (!settings.Esp32Enabled)
         {
-            return;
+            return false;
         }
 
         try
@@ -826,6 +979,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 Category = "ESP32",
                 Message = $"Cerere de dozare trimisa catre ESP32 pentru {requestedLiters:0.##} L.",
             });
+            return true;
         }
         catch (Exception ex)
         {
@@ -836,6 +990,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 Message = "Nu am putut trimite cererea de dozare catre ESP32.",
                 Details = ex.Message,
             });
+            return false;
         }
     }
 
@@ -870,6 +1025,11 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
     private async Task SimulateDispenseAsync(MachineSettings settings, SaleTransaction sale)
     {
+        if (settings.RuntimeMode != RuntimeMode.Demo)
+        {
+            return;
+        }
+
         try
         {
             var step = Math.Max(0.05m, Math.Round(sale.RequestedLiters / 18m, 2));
@@ -900,49 +1060,115 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 }
             }
 
-            sale.DispensedLiters = sale.RequestedLiters;
-            sale.CompletedAtUtc = DateTimeOffset.UtcNow;
-            sale.Status = SaleStatus.Completed;
-
-            settings.CurrentStockLiters = Math.Max(0, settings.CurrentStockLiters - sale.DispensedLiters);
-            await _settingsRepository.SaveAsync(settings);
-            await _salesRepository.SaveAsync(sale);
-
-            await SafeLogAsync(new DeviceLogEntry
-            {
-                Category = "Dispense",
-                Message = $"Dozare finalizata: {sale.DispensedLiters:0.##} L / {sale.TotalAmount:0.00} RON.",
-            });
+            await CompleteDispenseAsync(
+                settings,
+                sale,
+                sale.RequestedLiters,
+                $"Dozare demo finalizata: {sale.RequestedLiters:0.##} L / {sale.TotalAmount:0.00} RON.");
         }
         catch (Exception ex)
         {
-            sale.Status = SaleStatus.Failed;
-            sale.CompletedAtUtc = DateTimeOffset.UtcNow;
-            await _salesRepository.SaveAsync(sale);
-            await SafeLogAsync(new DeviceLogEntry
+            await FailActiveDispenseAsync(settings, sale, ex.Message);
+        }
+    }
+
+    private async Task CompleteDispenseAsync(
+        MachineSettings settings,
+        SaleTransaction sale,
+        decimal dispensedLiters,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        sale.DispensedLiters = Math.Min(sale.RequestedLiters, Math.Round(dispensedLiters, 3));
+        sale.CompletedAtUtc = DateTimeOffset.UtcNow;
+        sale.Status = SaleStatus.Completed;
+
+        settings.CurrentStockLiters = Math.Max(0, settings.CurrentStockLiters - sale.DispensedLiters);
+        await _settingsRepository.SaveAsync(settings, cancellationToken);
+        await _salesRepository.SaveAsync(sale, cancellationToken);
+
+        await SafeLogAsync(new DeviceLogEntry
+        {
+            Category = "Dispense",
+            Message = message,
+        }, cancellationToken);
+        await _remoteCommandJournal.CompleteAsync(_activeDispenseCommandId, message, cancellationToken);
+
+        await ResetDispenseSessionAsync(settings, cancellationToken);
+    }
+
+    private async Task FailActiveDispenseAsync(
+        MachineSettings settings,
+        SaleTransaction sale,
+        string errorMessage,
+        CancellationToken cancellationToken = default)
+    {
+        sale.Status = SaleStatus.Failed;
+        sale.CompletedAtUtc = DateTimeOffset.UtcNow;
+        await _salesRepository.SaveAsync(sale, cancellationToken);
+        await SafeLogAsync(new DeviceLogEntry
+        {
+            Severity = LogSeverity.Error,
+            Category = "Dispense",
+            Message = "Dozarea a esuat.",
+            Details = errorMessage,
+        }, cancellationToken);
+        await _remoteCommandJournal.FailAsync(_activeDispenseCommandId, errorMessage, cancellationToken);
+
+        await ResetDispenseSessionAsync(settings, cancellationToken);
+    }
+
+    private async Task ResetDispenseSessionAsync(MachineSettings settings, CancellationToken cancellationToken = default)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            _session = new DispenseSessionState
             {
-                Severity = LogSeverity.Error,
-                Category = "Dispense",
-                Message = "Dozarea a esuat.",
-                Details = ex.Message,
-            });
+                ActivityState = MachineActivityState.Ready,
+                ActivePaymentMethod = ResolveDefaultPaymentMethod(settings),
+            };
+            _lastDispenseProgressUtc = DateTimeOffset.MinValue;
+            _activeSale = null;
+            _activeDispenseSettings = null;
+            _activeDispenseCommandId = null;
         }
         finally
         {
-            await _sync.WaitAsync();
-            try
+            _sync.Release();
+        }
+    }
+
+    private async Task<bool> TryBeginCommandAsync(Guid? commandId, string commandType, object payload, CancellationToken cancellationToken)
+    {
+        if (commandId is null || commandId.Value == Guid.Empty)
+        {
+            return true;
+        }
+
+        if (!await _remoteCommandJournal.TryBeginAsync(commandId, commandType, payload, cancellationToken))
+        {
+            return false;
+        }
+
+        lock (_executedCommandIds)
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var staleCommandId in _executedCommandIds
+                         .Where(item => now - item.Value > TimeSpan.FromHours(6))
+                         .Select(item => item.Key)
+                         .ToList())
             {
-                _session = new DispenseSessionState
-                {
-                    ActivityState = MachineActivityState.Ready,
-                    ActivePaymentMethod = ResolveDefaultPaymentMethod(settings),
-                };
-                _lastDispenseProgressUtc = DateTimeOffset.MinValue;
+                _executedCommandIds.Remove(staleCommandId);
             }
-            finally
+
+            if (_executedCommandIds.ContainsKey(commandId.Value))
             {
-                _sync.Release();
+                return false;
             }
+
+            _executedCommandIds[commandId.Value] = now;
+            return true;
         }
     }
 
@@ -1080,7 +1306,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             changed = true;
         }
 
-        var normalizedCloudApiBaseUrl = NormalizeBaseUrl(settings.CloudApiBaseUrl, "https://signal.dllsoft.ro/erp");
+        var normalizedCloudApiBaseUrl = NormalizeBaseUrl(settings.CloudApiBaseUrl, "https://vending.dllsoft.ro");
         if (!string.Equals(settings.CloudApiBaseUrl, normalizedCloudApiBaseUrl, StringComparison.Ordinal))
         {
             settings.CloudApiBaseUrl = normalizedCloudApiBaseUrl;

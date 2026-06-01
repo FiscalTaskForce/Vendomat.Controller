@@ -237,6 +237,8 @@ ClientBin/
 *.dbproj.schemaview
 *.jfm
 *.pfx
+*.keystore
+*.jks
 *.publishsettings
 orleans.codegen.cs
 
@@ -349,6 +351,12 @@ ASALocalRun/
 
 # Local History for Visual Studio
 .localhistory/
+
+# PlatformIO
+**/.pio/
+**/.piolibdeps/
+.vscode/.browse.c_cpp.db*
+.vscode/ipch/
 
 # BeatPulse healthcheck temp database
 healthchecksdb

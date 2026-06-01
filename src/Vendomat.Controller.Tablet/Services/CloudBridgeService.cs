@@ -28,6 +28,9 @@ public sealed class CloudBridgeService(
     private CancellationTokenSource? _loopCts;
     private DateTimeOffset _lastDashboardSyncUtc = DateTimeOffset.MinValue;
 
+    public CloudBrokerClient Client => cloudBrokerClient;
+    public DateTimeOffset? LastSuccessfulSyncUtc { get; private set; }
+
     public void Start()
     {
         if (_loopTask is not null)
@@ -157,6 +160,7 @@ public sealed class CloudBridgeService(
         {
             _lastDashboardSyncUtc = DateTimeOffset.UtcNow;
         }
+        LastSuccessfulSyncUtc = DateTimeOffset.UtcNow;
 
         return snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning
             ? BusySyncInterval
@@ -225,11 +229,11 @@ public sealed class CloudBridgeService(
 
                 CloudTunnelActions.RunSanitation => BuildSuccess(
                     request,
-                    await RunSanitationAsync(request.Payload, cancellationToken)),
+                    await RunSanitationAsync(request.Payload, request.RequestId, cancellationToken)),
 
                 CloudTunnelActions.AddCredit => BuildSuccess(
                     request,
-                    await AddCreditAsync(request.Payload, cancellationToken)),
+                    await AddCreditAsync(request.Payload, request.RequestId, cancellationToken)),
 
                 _ => BuildError(request, $"Unsupported tunnel action '{request.Action}'."),
             };
@@ -247,17 +251,19 @@ public sealed class CloudBridgeService(
         return await machineRuntimeService.GetSettingsAsync(cancellationToken);
     }
 
-    private async Task<CloudTunnelAcceptedResponse> RunSanitationAsync(JsonElement payload, CancellationToken cancellationToken)
+    private async Task<CloudTunnelAcceptedResponse> RunSanitationAsync(JsonElement payload, string? requestId, CancellationToken cancellationToken)
     {
         var request = DeserializePayload<SanitationRequest>(payload);
+        request.CommandId = ParseCommandId(payload, requestId, request.CommandId);
         await machineRuntimeService.RunSanitationAsync(request, cancellationToken);
         return new CloudTunnelAcceptedResponse();
     }
 
-    private async Task<CloudTunnelRemoteCreditResponse> AddCreditAsync(JsonElement payload, CancellationToken cancellationToken)
+    private async Task<CloudTunnelRemoteCreditResponse> AddCreditAsync(JsonElement payload, string? requestId, CancellationToken cancellationToken)
     {
         var request = DeserializePayload<RemoteCreditRequest>(payload);
-        await machineRuntimeService.AddRemoteCreditAsync(request.Amount, cancellationToken);
+        request.CommandId = ParseCommandId(payload, requestId, request.CommandId);
+        await machineRuntimeService.AddRemoteCreditAsync(request, cancellationToken);
 
         return new CloudTunnelRemoteCreditResponse
         {
@@ -346,6 +352,28 @@ public sealed class CloudBridgeService(
     private T DeserializePayload<T>(JsonElement payload) =>
         payload.Deserialize<T>(_jsonOptions)
         ?? throw new InvalidOperationException("Tunnel payload is invalid.");
+
+    private static Guid? ParseCommandId(JsonElement payload, string? requestId, Guid? fallback)
+    {
+        if (fallback is not null && fallback.Value != Guid.Empty)
+        {
+            return fallback;
+        }
+
+        if (Guid.TryParse(requestId, out var requestCommandId))
+        {
+            return requestCommandId;
+        }
+
+        if (payload.TryGetProperty(nameof(RemoteCreditRequest.CommandId), out var commandIdElement)
+            && commandIdElement.ValueKind == JsonValueKind.String
+            && Guid.TryParse(commandIdElement.GetString(), out var commandId))
+        {
+            return commandId;
+        }
+
+        return fallback;
+    }
 
     private JsonElement SerializePayload(object? payload) =>
         payload is null
