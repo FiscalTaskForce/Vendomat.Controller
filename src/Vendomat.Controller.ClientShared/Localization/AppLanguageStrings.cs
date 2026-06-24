@@ -21,6 +21,7 @@ public sealed class AppLanguageStrings
     public string DashboardPaymentCash { get; set; } = string.Empty;
     public string DashboardPaymentCard { get; set; } = string.Empty;
     public string DashboardRequestedLitersTitle { get; set; } = string.Empty;
+    public string DashboardRemainingLitersTitle { get; set; } = string.Empty;
     public string DashboardSelectedTotalFormat { get; set; } = string.Empty;
     public string DashboardStockCapacityFormat { get; set; } = string.Empty;
     public string DashboardContactFormat { get; set; } = string.Empty;
@@ -33,6 +34,10 @@ public sealed class AppLanguageStrings
     public string DashboardStatusDispenseStarted { get; set; } = string.Empty;
     public string DashboardStatusDispensing { get; set; } = string.Empty;
     public string DashboardStatusCleaning { get; set; } = string.Empty;
+    public string DashboardStatusPriming { get; set; } = string.Empty;
+    public string DashboardRemoteOperationTitle { get; set; } = string.Empty;
+    public string DashboardRemoteOperationMessage { get; set; } = string.Empty;
+    public string DashboardStopCleaningButton { get; set; } = string.Empty;
     public string DashboardStatusCashBlocked { get; set; } = string.Empty;
     public string DashboardStatusCashReady { get; set; } = string.Empty;
     public string DashboardStatusReady { get; set; } = string.Empty;
@@ -40,6 +45,7 @@ public sealed class AppLanguageStrings
     public string DashboardAdminUnlockSubtitle { get; set; } = string.Empty;
     public string DashboardAdminUnlockPlaceholder { get; set; } = string.Empty;
     public string DashboardAdminUnlockInvalid { get; set; } = string.Empty;
+    public string DashboardAdminUnlockLockedOut { get; set; } = string.Empty;
     public string DashboardAdminChangeRequired { get; set; } = string.Empty;
     public string DashboardAdminChangeConfirm { get; set; } = string.Empty;
     public string DashboardAdminChangeMismatch { get; set; } = string.Empty;
@@ -76,6 +82,8 @@ public sealed class AppLanguageStrings
     public string SettingsUpdatesEsp32Description { get; set; } = string.Empty;
     public string SettingsContinuousCleaningDescription { get; set; } = string.Empty;
     public string SettingsPulsedCleaningDescription { get; set; } = string.Empty;
+    public string SettingsPrimingTitle { get; set; } = string.Empty;
+    public string SettingsPrimingDescription { get; set; } = string.Empty;
     public string SettingsPairingSection { get; set; } = string.Empty;
     public string SettingsPairingCardDescription { get; set; } = string.Empty;
     public string SettingsPairingSecurityHint { get; set; } = string.Empty;
@@ -106,6 +114,7 @@ public sealed class AppLanguageStrings
     public string SettingsBillBaudPlaceholder { get; set; } = string.Empty;
     public string SettingsEsp32Enabled { get; set; } = string.Empty;
     public string SettingsEsp32AutoDiscover { get; set; } = string.Empty;
+    public string SettingsRuntimeSectionTitle { get; set; } = string.Empty;
     public string SettingsRuntimeDemoMode { get; set; } = string.Empty;
     public string SettingsRuntimeDemoModeHint { get; set; } = string.Empty;
     public string SettingsEsp32PortLabel { get; set; } = string.Empty;
@@ -114,6 +123,8 @@ public sealed class AppLanguageStrings
     public string SettingsEsp32BaudPlaceholder { get; set; } = string.Empty;
     public string SettingsContinuousCleaning { get; set; } = string.Empty;
     public string SettingsPulsedCleaning { get; set; } = string.Empty;
+    public string SettingsPrime100Ml { get; set; } = string.Empty;
+    public string SettingsPrime200Ml { get; set; } = string.Empty;
     public string SettingsGenerateQr { get; set; } = string.Empty;
     public string SettingsAdminPasscodePlaceholder { get; set; } = string.Empty;
     public string SettingsAdminPasscodeConfirmPlaceholder { get; set; } = string.Empty;
@@ -121,6 +132,9 @@ public sealed class AppLanguageStrings
     public string SettingsPairingCodeFormat { get; set; } = string.Empty;
     public string SettingsPairingEndpointFormat { get; set; } = string.Empty;
     public string SettingsSaveButton { get; set; } = string.Empty;
+    public string SettingsExitAppButton { get; set; } = string.Empty;
+    public string SettingsExitConfirmTitle { get; set; } = string.Empty;
+    public string SettingsExitConfirmMessage { get; set; } = string.Empty;
     public string SettingsLoadingStatus { get; set; } = string.Empty;
     public string SettingsReadyStatus { get; set; } = string.Empty;
     public string SettingsSavedStatus { get; set; } = string.Empty;
@@ -132,6 +146,9 @@ public sealed class AppLanguageStrings
     public string SettingsQrReadyStatus { get; set; } = string.Empty;
     public string SettingsContinuousCleaningStatus { get; set; } = string.Empty;
     public string SettingsPulsedCleaningStatus { get; set; } = string.Empty;
+    public string SettingsPrimingStatusFormat { get; set; } = string.Empty;
+    public string SettingsOperationPopupTitle { get; set; } = string.Empty;
+    public string SettingsOperationPopupSubtitle { get; set; } = string.Empty;
 
     public string MobileDevicesTitle { get; set; } = string.Empty;
     public string MobileDevicesSubtitle { get; set; } = string.Empty;
@@ -160,6 +177,10 @@ public sealed class AppLanguageStrings
     public string MobileScannerPairSuccess { get; set; } = string.Empty;
     public string MobileScannerAlreadyAdded { get; set; } = string.Empty;
     public string MobileDetailStatusTitle { get; set; } = string.Empty;
+    public string MobileDetailMenuTitle { get; set; } = string.Empty;
+    public string MobileDetailStockViewTitle { get; set; } = string.Empty;
+    public string MobileDetailCreditViewTitle { get; set; } = string.Empty;
+    public string MobileDetailExitDashboard { get; set; } = string.Empty;
     public string MobileDetailTemperatureTitle { get; set; } = string.Empty;
     public string MobileDetailStockTitle { get; set; } = string.Empty;
     public string MobileDetailPriceTitle { get; set; } = string.Empty;
@@ -177,6 +198,7 @@ public sealed class AppLanguageStrings
     public string MobileDetailRemoteCreditQueued { get; set; } = string.Empty;
     public string MobileDetailRunContinuousCleaning { get; set; } = string.Empty;
     public string MobileDetailRunPulsedCleaning { get; set; } = string.Empty;
+    public string MobileDetailStopCleaning { get; set; } = string.Empty;
     public string MobileDetailUpdatedAtFormat { get; set; } = string.Empty;
     public string MobileDetailSalesSectionTitle { get; set; } = string.Empty;
     public string MobileDetailTodayRevenueTitle { get; set; } = string.Empty;
@@ -188,19 +210,33 @@ public sealed class AppLanguageStrings
     public string MobileDetailSanitationSectionTitle { get; set; } = string.Empty;
     public string MobileDetailLastSanitationTitle { get; set; } = string.Empty;
     public string MobileDetailSanitationCountTitle { get; set; } = string.Empty;
+    public string MobileDetailSanitationLast7DaysTitle { get; set; } = string.Empty;
     public string MobileDetailRecentSanitationTitle { get; set; } = string.Empty;
     public string MobileDetailNoSanitationHistory { get; set; } = string.Empty;
+    public string MobileDetailNoSanitationNotes { get; set; } = string.Empty;
+    public string MobileDetailLogsSectionTitle { get; set; } = string.Empty;
+    public string MobileDetailLogsSectionSubtitle { get; set; } = string.Empty;
+    public string MobileDetailNoLogs { get; set; } = string.Empty;
+    public string MobileDetailLogSeverityTrace { get; set; } = string.Empty;
+    public string MobileDetailLogSeverityInfo { get; set; } = string.Empty;
+    public string MobileDetailLogSeverityWarning { get; set; } = string.Empty;
+    public string MobileDetailLogSeverityError { get; set; } = string.Empty;
+    public string MobileDetailLogSeverityCritical { get; set; } = string.Empty;
     public string MobileDetailSaleStatusPending { get; set; } = string.Empty;
     public string MobileDetailSaleStatusCompleted { get; set; } = string.Empty;
     public string MobileDetailSaleStatusFailed { get; set; } = string.Empty;
+    public string MobileDetailSaleStatusCancelled { get; set; } = string.Empty;
     public string MobileDetailSanitationContinuous { get; set; } = string.Empty;
     public string MobileDetailSanitationPulsed { get; set; } = string.Empty;
     public string MobileDetailReady { get; set; } = string.Empty;
     public string MobileDetailDispensing { get; set; } = string.Empty;
     public string MobileDetailCleaning { get; set; } = string.Empty;
+    public string MobileDetailPriming { get; set; } = string.Empty;
     public string MobileDetailOutOfService { get; set; } = string.Empty;
     public string MobileDetailUnknown { get; set; } = string.Empty;
     public string MobileSettingsTitle { get; set; } = string.Empty;
+    public string MobileSettingsMenuTitle { get; set; } = string.Empty;
+    public string MobileSettingsExitSettings { get; set; } = string.Empty;
     public string MobileSettingsStatusLoading { get; set; } = string.Empty;
     public string MobileSettingsStatusLoaded { get; set; } = string.Empty;
     public string MobileSettingsStatusSending { get; set; } = string.Empty;

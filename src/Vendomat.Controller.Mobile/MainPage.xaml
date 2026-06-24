@@ -6,207 +6,251 @@
              xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
              x:Class="Vendomat.Controller.Mobile.MainPage"
              x:Name="DevicesPage"
-             x:DataType="viewModels:MainPageViewModel">
+             x:DataType="viewModels:MainPageViewModel"
+             Shell.NavBarIsVisible="False">
 
-    <Grid Padding="16"
-          RowDefinitions="Auto,*"
-          RowSpacing="16">
-        <VerticalStackLayout Spacing="14">
-            <Grid HeightRequest="96"
-                  ColumnDefinitions="*,168"
-                  ColumnSpacing="12">
-                <VerticalStackLayout Spacing="2"
-                                     VerticalOptions="Center">
-                    <Label Text="{localization:Translate MobileDevicesTitle}"
-                           FontSize="24"
-                           FontAttributes="Bold" />
-                    <Label Text="{localization:Translate MobileDevicesSubtitle}"
-                           FontSize="12"
-                           LineBreakMode="TailTruncation"
-                           TextColor="{StaticResource Gray500}" />
-                </VerticalStackLayout>
-
-                <Border Grid.Column="1"
-                        Padding="8,0"
-                        BackgroundColor="#F4F6F9"
-                        Stroke="#DBE1E8"
-                        StrokeThickness="1"
-                        VerticalOptions="Center">
-                    <syncfusion:SfComboBox x:Name="MobileLanguageComboBox"
-                                           ItemsSource="{Binding AvailableLanguages}"
-                                           SelectedItem="{Binding SelectedLanguageOption}"
-                                           DisplayMemberPath="NativeName"
-                                           TextMemberPath="NativeName"
-                                           IsEditable="False"
-                                           MaxDropDownHeight="180"
-                                           DropDownItemHeight="56"
-                                           Background="Transparent"
-                                           Stroke="Transparent"
-                                           DropDownIconColor="{StaticResource Gray600}"
-                                           SelectedDropDownItemBackground="#E7F4EC"
-                                           HeightRequest="54">
-                        <syncfusion:SfComboBox.CustomView>
-                            <Grid InputTransparent="True"
-                                  ColumnDefinitions="Auto,*"
-                                  ColumnSpacing="10"
-                                  Padding="6,0">
-                                <Image Source="{Binding SelectedLanguageOption.FlagImagePath, TargetNullValue=ro.svg}"
-                                       WidthRequest="28"
-                                       HeightRequest="20"
-                                       Aspect="AspectFill"
-                                       VerticalOptions="Center" />
-                                <Label Grid.Column="1"
-                                       Text="{Binding SelectedLanguageOption.NativeName, TargetNullValue=Română}"
-                                       FontSize="14"
-                                       FontAttributes="Bold"
-                                       VerticalTextAlignment="Center" />
-                            </Grid>
-                        </syncfusion:SfComboBox.CustomView>
-                        <syncfusion:SfComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="localization:LanguageOption">
-                                <Grid Padding="10,8"
+    <RefreshView Command="{Binding RefreshCommand}"
+                 IsRefreshing="{Binding IsRefreshing}">
+        <Grid Padding="20,18,20,24"
+              RowDefinitions="Auto,*"
+              RowSpacing="18">
+            <Border Grid.Row="0"
+                    Padding="20"
+                    BackgroundColor="{StaticResource Primary}"
+                    StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="26" />
+                </Border.StrokeShape>
+                <Grid RowDefinitions="Auto,Auto"
+                      ColumnDefinitions="*,112"
+                      RowSpacing="16"
+                      ColumnSpacing="14">
+                    <Border Grid.ColumnSpan="2"
+                            Padding="10,0"
+                            BackgroundColor="#22FFFFFF"
+                            Stroke="#33FFFFFF"
+                            StrokeThickness="1">
+                        <syncfusion:SfComboBox x:Name="MobileLanguageComboBox"
+                                               ItemsSource="{Binding AvailableLanguages}"
+                                               SelectedItem="{Binding SelectedLanguageOption}"
+                                               DisplayMemberPath="NativeName"
+                                               TextMemberPath="NativeName"
+                                               IsEditable="False"
+                                               MaxDropDownHeight="180"
+                                               DropDownItemHeight="56"
+                                               Background="Transparent"
+                                               Stroke="Transparent"
+                                               DropDownIconColor="White"
+                                               SelectedDropDownItemBackground="{StaticResource SuccessSurface}"
+                                               HeightRequest="54">
+                            <syncfusion:SfComboBox.CustomView>
+                                <Grid InputTransparent="True"
                                       ColumnDefinitions="Auto,*"
-                                      ColumnSpacing="12">
-                                    <Image Source="{Binding FlagImagePath}"
-                                           WidthRequest="30"
-                                           HeightRequest="22"
+                                      ColumnSpacing="10"
+                                      Padding="8,0">
+                                    <Image Source="{Binding SelectedLanguageOption.FlagImagePath, TargetNullValue=ro.svg}"
+                                           WidthRequest="28"
+                                           HeightRequest="20"
                                            Aspect="AspectFill"
                                            VerticalOptions="Center" />
-                                    <VerticalStackLayout Grid.Column="1"
-                                                         Spacing="1"
-                                                         VerticalOptions="Center">
-                                        <Label Text="{Binding NativeName}"
-                                               FontSize="14"
-                                               FontAttributes="Bold" />
-                                        <Label Text="{Binding CountryCode}"
-                                               FontSize="11"
-                                               TextColor="{StaticResource Gray500}" />
-                                    </VerticalStackLayout>
+                                    <Label Grid.Column="1"
+                                           Text="{Binding SelectedLanguageOption.NativeName}"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           TextColor="White"
+                                           VerticalTextAlignment="Center" />
                                 </Grid>
-                            </DataTemplate>
-                        </syncfusion:SfComboBox.ItemTemplate>
-                    </syncfusion:SfComboBox>
-                </Border>
-            </Grid>
+                            </syncfusion:SfComboBox.CustomView>
+                            <syncfusion:SfComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="localization:LanguageOption">
+                                    <Grid Padding="10,8"
+                                          ColumnDefinitions="Auto,*"
+                                          ColumnSpacing="12">
+                                        <Image Source="{Binding FlagImagePath}"
+                                               WidthRequest="30"
+                                               HeightRequest="22"
+                                               Aspect="AspectFill"
+                                               VerticalOptions="Center" />
+                                        <VerticalStackLayout Grid.Column="1"
+                                                             Spacing="1"
+                                                             VerticalOptions="Center">
+                                            <Label Text="{Binding NativeName}"
+                                                   FontSize="14"
+                                                   FontAttributes="Bold" />
+                                            <Label Text="{Binding CountryCode}"
+                                                   FontSize="11"
+                                                   TextColor="{StaticResource Gray500}" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </DataTemplate>
+                            </syncfusion:SfComboBox.ItemTemplate>
+                        </syncfusion:SfComboBox>
+                    </Border>
 
-            <Grid ColumnDefinitions="*,*"
-                  ColumnSpacing="12">
-                <Button Text="{localization:Translate MobileAddDevice}"
-                        Command="{Binding OpenScannerCommand}"
-                        BackgroundColor="#1C6B4A"
-                        TextColor="White" />
-                <Button Grid.Column="1"
-                        Text="{localization:Translate CommonRefresh}"
-                        Command="{Binding RefreshCommand}" />
-            </Grid>
-        </VerticalStackLayout>
+                    <Button Grid.Row="1"
+                            Text="{localization:Translate MobileAddDevice}"
+                            Command="{Binding OpenScannerCommand}"
+                            FontSize="14"
+                            Padding="10,12"
+                            LineBreakMode="NoWrap" />
+                    <Button Grid.Row="1"
+                            Grid.Column="1"
+                            Text="{localization:Translate CommonRefresh}"
+                            Command="{Binding RefreshCommand}"
+                            Style="{StaticResource GhostButtonStyle}" />
+                </Grid>
+            </Border>
 
-        <Grid Grid.Row="1">
-            <CollectionView ItemsSource="{Binding Devices}"
-                            IsVisible="{Binding HasDevices}"
+            <CollectionView Grid.Row="1"
+                            ItemsSource="{Binding Devices}"
                             SelectionMode="None">
+                <CollectionView.EmptyView>
+                    <Border Style="{StaticResource CardBorderStyle}"
+                            Padding="24"
+                            Margin="0,6,0,0">
+                        <VerticalStackLayout Spacing="12"
+                                             HorizontalOptions="Center"
+                                             VerticalOptions="Center">
+                            <Label Text="{localization:Translate MobileDevicesEmptyTitle}"
+                                   Style="{StaticResource PageTitleLabelStyle}"
+                                   FontSize="24"
+                                   HorizontalTextAlignment="Center" />
+                            <Label Text="{localization:Translate MobileDevicesEmptySubtitle}"
+                                   Style="{StaticResource PageSubtitleLabelStyle}"
+                                   HorizontalTextAlignment="Center" />
+                            <Button Text="{localization:Translate MobileAddDevice}"
+                                    Command="{Binding OpenScannerCommand}"
+                                    HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                </CollectionView.EmptyView>
+
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="viewModels:DeviceCardViewModel">
-                        <Border Margin="0,0,0,12"
-                                Padding="16"
-                                BackgroundColor="#FFF7EF"
-                                Stroke="#E7DDCF"
-                                StrokeThickness="1">
+                        <Border Margin="0,0,0,14"
+                                Style="{StaticResource CardBorderStyle}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.OpenDetailsCommand}"
                                                       CommandParameter="{Binding .}" />
                             </Border.GestureRecognizers>
 
                             <Grid RowDefinitions="Auto,Auto,Auto,Auto"
-                                  ColumnDefinitions="*,Auto,Auto"
-                                  RowSpacing="8">
-                                <Label Text="{Binding MachineName}"
-                                       FontSize="20"
-                                       FontAttributes="Bold" />
-                                <Label Grid.Column="1"
-                                       Text="{Binding AvailabilityText}"
-                                       FontSize="12"
-                                       TextColor="{StaticResource Gray500}"
-                                       VerticalOptions="Center" />
+                                  ColumnDefinitions="*,Auto"
+                                  RowSpacing="14"
+                                  ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="4">
+                                    <Label Text="{Binding MachineName}"
+                                           Style="{StaticResource SectionTitleLabelStyle}"
+                                           FontSize="20" />
+                                </VerticalStackLayout>
 
-                                <Label Grid.Row="1"
-                                       Grid.ColumnSpan="3"
-                                       Text="{Binding SnapshotSummary}"
-                                       FontSize="14" />
-
-                                <Border Grid.Row="2"
-                                        Grid.ColumnSpan="2"
-                                        Padding="10,6"
-                                        BackgroundColor="#EEF6FB"
+                                <Border Grid.Column="1"
+                                        Padding="12,7"
                                         StrokeThickness="0"
-                                        HorizontalOptions="Start">
-                                    <HorizontalStackLayout Spacing="8">
-                                        <Label Text="{Binding ConnectionModeText}"
-                                               FontSize="12"
-                                               FontAttributes="Bold"
-                                               TextColor="#184A69" />
-                                        <Label Text="{Binding ApiBaseUrl}"
-                                               FontSize="11"
-                                               TextColor="{StaticResource Gray500}"
-                                               LineBreakMode="TailTruncation"
-                                               MaxLines="1" />
-                                    </HorizontalStackLayout>
+                                        HorizontalOptions="End"
+                                        VerticalOptions="Start">
+                                    <Border.Triggers>
+                                        <DataTrigger TargetType="Border"
+                                                     Binding="{Binding IsOnline}"
+                                                     Value="True">
+                                            <Setter Property="BackgroundColor" Value="{StaticResource SuccessSurface}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Border"
+                                                     Binding="{Binding IsOnline}"
+                                                     Value="False">
+                                            <Setter Property="BackgroundColor" Value="{StaticResource WarmSurface}" />
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Label Text="{Binding AvailabilityText}"
+                                           Style="{StaticResource BadgeLabelStyle}" />
                                 </Border>
 
-                                <Grid Grid.Row="3"
-                                      Grid.ColumnSpan="3"
-                                      ColumnDefinitions="*,Auto,Auto"
-                                      ColumnSpacing="10">
-                                    <Label Text="{Binding LastSeenText}"
-                                           FontSize="12"
-                                           TextColor="{StaticResource Gray500}"
-                                           VerticalOptions="Center" />
-                                    <Button Grid.Column="1"
-                                            Text="{localization:Translate MobileDevicesOpenDashboard}"
-                                            Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.OpenDetailsCommand}"
-                                            CommandParameter="{Binding .}"
-                                            Padding="14,8" />
-                                    <Button Grid.Column="2"
-                                            Text="{localization:Translate MobileDevicesOpenSettings}"
-                                            Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.OpenSettingsCommand}"
-                                            CommandParameter="{Binding .}"
-                                            Padding="14,8" />
+                                <VerticalStackLayout Grid.Row="1"
+                                                     Grid.ColumnSpan="2"
+                                                     Spacing="10">
+                                    <Border Style="{StaticResource MetricCardBorderStyle}"
+                                            BackgroundColor="{StaticResource InfoSurface}">
+                                        <Grid ColumnDefinitions="Auto,*"
+                                              ColumnSpacing="12">
+                                            <Label Text="{Binding StockLabel}"
+                                                   Style="{StaticResource MetricCaptionLabelStyle}"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding StockText}"
+                                                   Style="{StaticResource MetricValueLabelStyle}"
+                                                   FontSize="17"
+                                                   HorizontalTextAlignment="End" />
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Style="{StaticResource MetricCardBorderStyle}">
+                                        <Grid ColumnDefinitions="Auto,*"
+                                              ColumnSpacing="12">
+                                            <Label Text="{Binding TemperatureLabel}"
+                                                   Style="{StaticResource MetricCaptionLabelStyle}"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding TemperatureText}"
+                                                   Style="{StaticResource MetricValueLabelStyle}"
+                                                   FontSize="17"
+                                                   HorizontalTextAlignment="End" />
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Style="{StaticResource MetricCardBorderStyle}"
+                                            BackgroundColor="{StaticResource WarmSurface}">
+                                        <Grid ColumnDefinitions="Auto,*"
+                                              ColumnSpacing="12">
+                                            <Label Text="{Binding PriceLabel}"
+                                                   Style="{StaticResource MetricCaptionLabelStyle}"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PriceText}"
+                                                   Style="{StaticResource MetricValueLabelStyle}"
+                                                   FontSize="17"
+                                                   HorizontalTextAlignment="End" />
+                                        </Grid>
+                                    </Border>
+                                </VerticalStackLayout>
+
+                                <Grid Grid.Row="2"
+                                      Grid.ColumnSpan="2">
+                                    <Border Padding="14"
+                                            BackgroundColor="{StaticResource Secondary}"
+                                            StrokeThickness="0">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Label Text="{Binding ConnectionModeText}"
+                                                   Style="{StaticResource BadgeLabelStyle}"
+                                                   HorizontalTextAlignment="Start" />
+                                            <Label Text="{Binding LastSeenText}"
+                                                   Style="{StaticResource SectionCaptionLabelStyle}" />
+                                            <Label Text="{Binding ApiBaseUrl}"
+                                                   Style="{StaticResource SectionCaptionLabelStyle}"
+                                                   LineBreakMode="CharacterWrap" />
+                                        </VerticalStackLayout>
+                                    </Border>
                                 </Grid>
 
-                                <Button Grid.Row="0"
-                                        Grid.Column="2"
-                                        Text="{localization:Translate CommonDelete}"
-                                        Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.RemoveDeviceCommand}"
-                                        CommandParameter="{Binding .}"
-                                        FontSize="12"
-                                        Padding="12,6"
-                                        BackgroundColor="#FBE5E1"
-                                        TextColor="#A33A2A"
-                                        HorizontalOptions="End"
-                                        VerticalOptions="Start" />
+                                <VerticalStackLayout Grid.Row="3"
+                                                     Grid.ColumnSpan="2"
+                                                     Spacing="10">
+                                    <Button Text="{localization:Translate MobileDevicesOpenDashboard}"
+                                            Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.OpenDetailsCommand}"
+                                            CommandParameter="{Binding .}"
+                                            HorizontalOptions="Fill"
+                                            Padding="12,14" />
+                                    <Button Text="{localization:Translate MobileDevicesOpenSettings}"
+                                            Command="{Binding Source={x:Reference DevicesPage}, Path=BindingContext.OpenSettingsCommand}"
+                                            CommandParameter="{Binding .}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            HorizontalOptions="Fill"
+                                            Padding="12,14" />
+                                </VerticalStackLayout>
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-
-            <VerticalStackLayout IsVisible="{Binding HasNoDevices}"
-                                 Spacing="10"
-                                 VerticalOptions="Center"
-                                 HorizontalOptions="Center">
-                <Label Text="{localization:Translate MobileDevicesEmptyTitle}"
-                       FontSize="22"
-                       FontAttributes="Bold"
-                       HorizontalTextAlignment="Center" />
-                <Label Text="{localization:Translate MobileDevicesEmptySubtitle}"
-                       FontSize="14"
-                       HorizontalTextAlignment="Center"
-                       TextColor="{StaticResource Gray500}" />
-                <Button Text="{localization:Translate MobileAddDevice}"
-                        Command="{Binding OpenScannerCommand}"
-                        WidthRequest="200" />
-            </VerticalStackLayout>
         </Grid>
-    </Grid>
-
+    </RefreshView>
 </ContentPage>

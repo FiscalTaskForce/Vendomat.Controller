@@ -3,61 +3,95 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:localization="clr-namespace:Vendomat.Controller.Client.Localization"
              xmlns:viewModels="clr-namespace:Vendomat.Controller.Mobile.ViewModels"
+             xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
              x:Class="Vendomat.Controller.Mobile.Pages.QrScannerPage"
              Shell.NavBarIsVisible="False"
+             BackgroundColor="Black"
              x:DataType="viewModels:QrScannerViewModel">
 
-    <ScrollView>
-        <Grid Padding="16"
-              RowDefinitions="Auto,Auto,Auto,Auto"
-              RowSpacing="12">
-            <Grid HeightRequest="76"
-                  ColumnDefinitions="Auto,*"
-                  ColumnSpacing="12">
-                <Button Text="{localization:Translate CommonBack}"
-                        Clicked="OnBackClicked"
-                        Padding="16,10"
-                        VerticalOptions="Center" />
-                <VerticalStackLayout Grid.Column="1"
-                                     x:Name="HeaderStack"
-                                     Spacing="2"
-                                     VerticalOptions="Center">
-                    <Label Text="{localization:Translate MobileScannerTitle}"
-                           FontSize="22"
-                           FontAttributes="Bold"
-                           LineBreakMode="TailTruncation" />
-                    <Label Text="{localization:Translate MobileScannerSubtitle}"
-                           FontSize="12"
-                           LineBreakMode="TailTruncation"
-                           TextColor="{StaticResource Gray500}" />
-                </VerticalStackLayout>
-            </Grid>
+    <Grid>
+        <Grid x:Name="CameraHost"
+              BackgroundColor="Black"
+              HorizontalOptions="Fill"
+              VerticalOptions="Fill" />
 
-            <Border Grid.Row="1"
-                    Stroke="#D9CBB8"
-                    StrokeThickness="1"
-                    Padding="0">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="26" />
-                </Border.StrokeShape>
-                <Grid x:Name="ScannerHost"
-                      HeightRequest="360">
-                    <Label x:Name="ScannerUnavailableLabel"
-                           IsVisible="False"
-                           Text="{localization:Translate MobileScannerManualModeHint}"
-                           FontSize="13"
-                           HorizontalTextAlignment="Center"
-                           VerticalTextAlignment="Center"
-                           TextColor="{StaticResource Gray500}"
-                           Margin="18" />
+        <Grid RowDefinitions="Auto,*,Auto"
+              Padding="20,18,20,28"
+              RowSpacing="18">
+            <Border Padding="18"
+                    BackgroundColor="#D8175138"
+                    Stroke="#33FFFFFF"
+                    StrokeThickness="1">
+                <Grid RowDefinitions="Auto,Auto"
+                      ColumnDefinitions="Auto,*"
+                      RowSpacing="12"
+                      ColumnSpacing="12">
+                    <Button Text="{localization:Translate CommonBack}"
+                            Clicked="OnBackClicked"
+                            Style="{StaticResource GhostButtonStyle}"
+                            Padding="14,10"
+                            VerticalOptions="Start" />
+
+                    <VerticalStackLayout Grid.Column="1"
+                                         Spacing="4"
+                                         VerticalOptions="Center">
+                        <Label Text="{localization:Translate MobileScannerTitle}"
+                               Style="{StaticResource PageTitleLabelStyle}"
+                               TextColor="White"
+                               FontSize="26" />
+                        <Label Text="{localization:Translate MobileScannerSubtitle}"
+                               Style="{StaticResource PageSubtitleLabelStyle}"
+                               TextColor="#E1F3E9" />
+                    </VerticalStackLayout>
+
+                    <Border Grid.Row="1"
+                            Grid.ColumnSpan="2"
+                            Padding="12"
+                            BackgroundColor="#24FFFFFF"
+                            Stroke="#30FFFFFF"
+                            StrokeThickness="1">
+                        <Label Text="{Binding StatusMessage}"
+                               Style="{StaticResource PageSubtitleLabelStyle}"
+                               TextColor="White" />
+                    </Border>
                 </Grid>
             </Border>
 
-            <Label Grid.Row="2"
-                   Text="{Binding StatusMessage}"
-                   FontSize="13"
-                   TextColor="{StaticResource Gray500}" />
-        </Grid>
-    </ScrollView>
+            <Grid Grid.Row="1"
+                  InputTransparent="True">
+                <Border WidthRequest="320"
+                        HeightRequest="320"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        Stroke="#FFFFFFFF"
+                        StrokeThickness="4"
+                        BackgroundColor="Transparent">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="28" />
+                    </Border.StrokeShape>
+                </Border>
+                <Label x:Name="ScannerUnavailableLabel"
+                       IsVisible="False"
+                       Text="{localization:Translate MobileScannerManualModeHint}"
+                       FontSize="14"
+                       HorizontalTextAlignment="Center"
+                       VerticalTextAlignment="Center"
+                       TextColor="White"
+                       BackgroundColor="#AA000000"
+                       Margin="36"
+                       Padding="14"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center" />
+            </Grid>
 
+            <Border Grid.Row="2"
+                    Padding="12,8"
+                    BackgroundColor="#D8E7F5EC"
+                    StrokeThickness="0"
+                    HorizontalOptions="Center">
+                <Label Text="{localization:Translate MobileScannerManualModeHint}"
+                       Style="{StaticResource BadgeLabelStyle}" />
+            </Border>
+        </Grid>
+    </Grid>
 </ContentPage>

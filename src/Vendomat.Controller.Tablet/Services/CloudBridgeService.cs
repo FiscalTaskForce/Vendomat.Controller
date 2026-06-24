@@ -56,7 +56,7 @@ public sealed class CloudBridgeService(
             MachineName = settings.MachineName,
             MachineToken = settings.CloudMachineToken,
             CompanionAccessToken = settings.CompanionAccessToken,
-            LocalApiBaseUrl = settings.LocalApiBaseUrl,
+            LocalApiBaseUrl = LanAddressResolver.ResolveBaseUrl(settings.LocalApiBaseUrl),
             PublicApiBaseUrl = settings.PublicApiBaseUrl,
             CloudApiBaseUrl = settings.CloudApiBaseUrl,
             PairingCode = payload.PairingCode,
@@ -162,7 +162,7 @@ public sealed class CloudBridgeService(
         }
         LastSuccessfulSyncUtc = DateTimeOffset.UtcNow;
 
-        return snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning
+        return snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming
             ? BusySyncInterval
             : IdleSyncInterval;
     }
@@ -231,6 +231,14 @@ public sealed class CloudBridgeService(
                     request,
                     await RunSanitationAsync(request.Payload, request.RequestId, cancellationToken)),
 
+                CloudTunnelActions.StopSanitation => BuildSuccess(
+                    request,
+                    await StopSanitationAsync(request.RequestId, cancellationToken)),
+
+                CloudTunnelActions.RunPriming => BuildSuccess(
+                    request,
+                    await RunPrimingAsync(request.Payload, request.RequestId, cancellationToken)),
+
                 CloudTunnelActions.AddCredit => BuildSuccess(
                     request,
                     await AddCreditAsync(request.Payload, request.RequestId, cancellationToken)),
@@ -259,6 +267,21 @@ public sealed class CloudBridgeService(
         return new CloudTunnelAcceptedResponse();
     }
 
+    private async Task<CloudTunnelAcceptedResponse> StopSanitationAsync(string? requestId, CancellationToken cancellationToken)
+    {
+        _ = Guid.TryParse(requestId, out var commandId);
+        await machineRuntimeService.StopSanitationAsync(commandId == Guid.Empty ? null : commandId, cancellationToken);
+        return new CloudTunnelAcceptedResponse();
+    }
+
+    private async Task<CloudTunnelAcceptedResponse> RunPrimingAsync(JsonElement payload, string? requestId, CancellationToken cancellationToken)
+    {
+        var request = DeserializePayload<PrimingRequest>(payload);
+        request.CommandId = ParseCommandId(payload, requestId, request.CommandId);
+        await machineRuntimeService.RunPrimingAsync(request, cancellationToken);
+        return new CloudTunnelAcceptedResponse();
+    }
+
     private async Task<CloudTunnelRemoteCreditResponse> AddCreditAsync(JsonElement payload, string? requestId, CancellationToken cancellationToken)
     {
         var request = DeserializePayload<RemoteCreditRequest>(payload);
@@ -283,7 +306,7 @@ public sealed class CloudBridgeService(
             MachineName = settings.MachineName,
             MachineToken = settings.CloudMachineToken,
             CompanionAccessToken = settings.CompanionAccessToken,
-            LocalApiBaseUrl = settings.LocalApiBaseUrl,
+            LocalApiBaseUrl = LanAddressResolver.ResolveBaseUrl(settings.LocalApiBaseUrl),
             PublicApiBaseUrl = settings.PublicApiBaseUrl,
             CloudApiBaseUrl = settings.CloudApiBaseUrl,
             Snapshot = snapshot,

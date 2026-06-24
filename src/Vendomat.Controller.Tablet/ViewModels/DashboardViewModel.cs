@@ -15,7 +15,8 @@ namespace Vendomat.Controller.Tablet.ViewModels;
 public partial class DashboardViewModel(
     IMachineRuntimeService machineRuntimeService,
     IAdvertisementRepository advertisementRepository,
-    LanguageService languageService) : ObservableObject
+    LanguageService languageService,
+    AdminPasscodeRateLimiter adminPasscodeRateLimiter) : ObservableObject
 {
     private CancellationTokenSource? _refreshCancellationTokenSource;
     private MachineStatusSnapshot? _lastSnapshot;
@@ -55,7 +56,25 @@ public partial class DashboardViewModel(
     private bool canUseCard;
 
     [ObservableProperty]
+    private bool isCardPaymentVisible;
+
+    [ObservableProperty]
+    private bool isPaymentSelectorVisible;
+
+    [ObservableProperty]
     private bool isDispensing;
+
+    [ObservableProperty]
+    private bool isRemoteOperationOverlayVisible;
+
+    [ObservableProperty]
+    private bool canStopRemoteOperation;
+
+    [ObservableProperty]
+    private string remoteOperationTitle = string.Empty;
+
+    [ObservableProperty]
+    private string remoteOperationMessage = string.Empty;
 
     [ObservableProperty]
     private string contactValue = string.Empty;
@@ -82,9 +101,17 @@ public partial class DashboardViewModel(
 
     public decimal DispenseProgress => RequestedLiters <= 0 ? 0 : Math.Clamp(DispensedLiters / RequestedLiters, 0m, 1m);
 
+    public decimal RemainingLiters => Math.Max(0, Math.Round(RequestedLiters - DispensedLiters, 2));
+
+    public decimal RequestedLitersDisplay => IsDispensing ? RemainingLiters : RequestedLiters;
+
+    public string RequestedLitersTitle => IsDispensing
+        ? T(nameof(AppLanguageStrings.DashboardRemainingLitersTitle))
+        : T(nameof(AppLanguageStrings.DashboardRequestedLitersTitle));
+
     public bool CanAdjustLiters => SelectedPaymentMethod == PaymentMethod.Card && !IsDispensing && CanUseCard;
 
-    public bool CanStartDispense => !IsDispensing && RequestedLiters > 0;
+    public bool CanStartDispense => IsDispensing || RequestedLiters > 0;
 
     public string StartButtonText => IsDispensing
         ? T(nameof(AppLanguageStrings.DashboardDispensingButton))
@@ -121,10 +148,15 @@ public partial class DashboardViewModel(
         _ = RefreshLoopAsync(_refreshCancellationTokenSource.Token);
     }
 
+    /// <summary>Seconds remaining on the admin lockout after the last verify attempt, or 0.</summary>
+    public int AdminUnlockRetrySeconds { get; private set; }
+
     public async Task<bool> VerifyAdminPasscodeAsync(string passcode)
     {
         var settings = await machineRuntimeService.GetSettingsAsync();
-        return AdminPasscodeHasher.Verify(settings.AdminPasscodeHash, passcode);
+        var accepted = adminPasscodeRateLimiter.TryVerify(settings.AdminPasscodeHash, passcode);
+        AdminUnlockRetrySeconds = (int)Math.Ceiling(adminPasscodeRateLimiter.RetryAfter.TotalSeconds);
+        return accepted;
     }
 
     public async Task<bool> IsDefaultAdminPasscodeActiveAsync()
@@ -168,10 +200,17 @@ public partial class DashboardViewModel(
     {
         OnPropertyChanged(nameof(CanStartDispense));
         OnPropertyChanged(nameof(DispenseProgress));
+        OnPropertyChanged(nameof(RemainingLiters));
+        OnPropertyChanged(nameof(RequestedLitersDisplay));
         OnPropertyChanged(nameof(SelectedTotalDisplay));
     }
 
-    partial void OnDispensedLitersChanged(decimal value) => OnPropertyChanged(nameof(DispenseProgress));
+    partial void OnDispensedLitersChanged(decimal value)
+    {
+        OnPropertyChanged(nameof(DispenseProgress));
+        OnPropertyChanged(nameof(RemainingLiters));
+        OnPropertyChanged(nameof(RequestedLitersDisplay));
+    }
 
     partial void OnTotalAmountChanged(decimal value) => OnPropertyChanged(nameof(SelectedTotalDisplay));
 
@@ -184,6 +223,8 @@ public partial class DashboardViewModel(
         OnPropertyChanged(nameof(CanAdjustLiters));
         OnPropertyChanged(nameof(CanStartDispense));
         OnPropertyChanged(nameof(StartButtonText));
+        OnPropertyChanged(nameof(RequestedLitersTitle));
+        OnPropertyChanged(nameof(RequestedLitersDisplay));
     }
 
     [RelayCommand]
@@ -255,6 +296,14 @@ public partial class DashboardViewModel(
     {
         try
         {
+            if (IsDispensing)
+            {
+                await machineRuntimeService.StopDispenseAsync();
+                StatusMessage = T(nameof(AppLanguageStrings.DashboardStatusReady));
+                await LoadStatusAsync();
+                return;
+            }
+
             await machineRuntimeService.StartDispenseAsync(new DispenseCommand
             {
                 RequestedLiters = RequestedLiters,
@@ -264,6 +313,23 @@ public partial class DashboardViewModel(
 
             StatusMessage = T(nameof(AppLanguageStrings.DashboardStatusDispenseStarted));
             await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task StopRemoteOperation()
+    {
+        try
+        {
+            if (_lastSnapshot?.Session.ActivityState == MachineActivityState.Cleaning)
+            {
+                await machineRuntimeService.StopSanitationAsync();
+                await LoadStatusAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -323,9 +389,19 @@ public partial class DashboardViewModel(
         TotalAmount = snapshot.Session.TotalAmount;
         DispensedLiters = snapshot.Session.DispensedLiters;
         IsDispensing = snapshot.Session.ActivityState == MachineActivityState.Dispensing;
+        IsRemoteOperationOverlayVisible = snapshot.Session.ActivityState is MachineActivityState.Cleaning or MachineActivityState.Priming;
+        CanStopRemoteOperation = snapshot.Session.ActivityState == MachineActivityState.Cleaning;
+        RemoteOperationTitle = snapshot.Session.IsRemoteOperation
+            ? T(nameof(AppLanguageStrings.DashboardRemoteOperationTitle))
+            : T(nameof(AppLanguageStrings.SettingsOperationPopupTitle));
+        RemoteOperationMessage = string.IsNullOrWhiteSpace(snapshot.Session.OperationMessage)
+            ? T(nameof(AppLanguageStrings.DashboardRemoteOperationMessage))
+            : snapshot.Session.OperationMessage;
 
-        var isMachineBusy = snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning;
+        var isMachineBusy = snapshot.Session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming;
         CanUseCash = snapshot.Settings.CashPaymentEnabled && !isMachineBusy;
+        IsCardPaymentVisible = snapshot.Settings.CardPaymentEnabled;
+        IsPaymentSelectorVisible = snapshot.Settings.CashPaymentEnabled && snapshot.Settings.CardPaymentEnabled;
         CanUseCard = snapshot.Settings.CardPaymentEnabled
             && !isMachineBusy
             && !snapshot.Session.IsCardSelectionBlocked
@@ -349,6 +425,9 @@ public partial class DashboardViewModel(
         OnPropertyChanged(nameof(ContactDisplay));
         OnPropertyChanged(nameof(TankCapacityDisplay));
         OnPropertyChanged(nameof(SelectedTotalDisplay));
+        OnPropertyChanged(nameof(RequestedLitersTitle));
+        OnPropertyChanged(nameof(RequestedLitersDisplay));
+        OnPropertyChanged(nameof(RemainingLiters));
     }
 
     private string ResolveStatusMessage(MachineStatusSnapshot snapshot) =>
@@ -356,6 +435,7 @@ public partial class DashboardViewModel(
         {
             MachineActivityState.Dispensing => T(nameof(AppLanguageStrings.DashboardStatusDispensing)),
             MachineActivityState.Cleaning => T(nameof(AppLanguageStrings.DashboardStatusCleaning)),
+            MachineActivityState.Priming => T(nameof(AppLanguageStrings.DashboardStatusPriming)),
             _ when snapshot.Session.IsCardSelectionBlocked => T(nameof(AppLanguageStrings.DashboardStatusCashBlocked)),
             _ when SelectedPaymentMethod == PaymentMethod.Cash => T(nameof(AppLanguageStrings.DashboardStatusCashReady)),
             _ => T(nameof(AppLanguageStrings.DashboardStatusReady)),
@@ -400,6 +480,7 @@ public partial class DashboardViewModel(
         OnPropertyChanged(nameof(TankCapacityDisplay));
         OnPropertyChanged(nameof(SelectedTotalDisplay));
         OnPropertyChanged(nameof(ContactDisplay));
+        OnPropertyChanged(nameof(RequestedLitersTitle));
 
         StatusMessage = _lastSnapshot is null
             ? T(nameof(AppLanguageStrings.DashboardStatusStarting))

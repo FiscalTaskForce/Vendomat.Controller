@@ -1,8 +1,10 @@
 using System.Text.Json;
+using Android.Util;
 using Vendomat.Controller.Application.Contracts;
 using Vendomat.Controller.Application.Interfaces;
 using Vendomat.Controller.Domain.Enums;
 using Vendomat.Controller.Domain.Models;
+using Vendomat.Controller.Domain.Sales;
 using Vendomat.Controller.Domain.Security;
 
 namespace Vendomat.Controller.Tablet.Services;
@@ -11,8 +13,10 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 {
     private const string RemoteCreditCommandType = "remote-credit";
     private const string DispenseCommandType = "dispense";
+    private const string PrimingCommandType = "priming";
     private const string SanitationCommandType = "sanitation";
     private const string Esp32FirmwareUpdateCommandType = "esp32-firmware-update";
+    private const string ValidatorLogTag = "VendomatValidator";
 
     private readonly IMachineSettingsRepository _settingsRepository;
     private readonly ISalesRepository _salesRepository;
@@ -43,6 +47,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
     private SaleTransaction? _activeSale;
     private MachineSettings? _activeDispenseSettings;
     private Guid? _activeDispenseCommandId;
+    private TaskCompletionSource<bool>? _activePrimingCompletion;
+    private SanitationRecord? _activeSanitation;
+    private Guid? _activeSanitationCommandId;
 
     public MachineRuntimeService(
         IMachineSettingsRepository settingsRepository,
@@ -66,6 +73,8 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         _billValidatorGateway.NoteRead += OnBillValidatorNoteRead;
         _billValidatorGateway.CreditAccepted += OnBillValidatorCreditAccepted;
         _billValidatorGateway.NoteRejected += OnBillValidatorNoteRejected;
+        _billValidatorGateway.StatusChanged += OnBillValidatorStatusChanged;
+        _billValidatorGateway.Faulted += OnBillValidatorFaulted;
         _esp32Gateway.SensorSnapshotReceived += OnEsp32SensorSnapshotReceived;
         _esp32Gateway.DispenseProgressReceived += OnEsp32DispenseProgressReceived;
         _esp32Gateway.DispenseCompleted += OnEsp32DispenseCompleted;
@@ -84,9 +93,15 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             TickSensorSnapshot();
             NormalizeSessionUnsafe(settings);
 
+            // Broadcast the LAN IPv4 address rather than the mDNS hostname so paired clients
+            // can reach the local API by IP; only the outbound copy is rewritten, not the
+            // persisted (user-configured) setting.
+            var outboundSettings = Clone(settings);
+            outboundSettings.LocalApiBaseUrl = LanAddressResolver.ResolveBaseUrl(outboundSettings.LocalApiBaseUrl);
+
             return new MachineStatusSnapshot
             {
-                Settings = Clone(settings),
+                Settings = outboundSettings,
                 Sensor = Clone(_sensor),
                 Session = Clone(_session),
                 GeneratedAtUtc = DateTimeOffset.UtcNow,
@@ -112,6 +127,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         var recentSanitations = (await _sanitationRepository.GetRecentAsync(12, cancellationToken))
             .Where(item => item.MachineId == status.Settings.MachineId)
             .OrderByDescending(item => item.StartedAtUtc)
+            .ToList();
+        var recentLogs = (await _logRepository.GetRecentAsync(20, cancellationToken))
+            .OrderByDescending(item => item.CreatedAtUtc)
             .ToList();
         var allSanitations = (await _sanitationRepository.GetAllAsync(cancellationToken))
             .Where(item => item.MachineId == status.Settings.MachineId)
@@ -149,6 +167,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             },
             RecentSales = recentSales,
             RecentSanitations = recentSanitations,
+            RecentLogs = recentLogs,
             GeneratedAtUtc = DateTimeOffset.UtcNow,
         };
     }
@@ -193,7 +212,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
         await SafeLogAsync(new DeviceLogEntry
         {
-            Category = "Settings",
+            Category = LogCategories.Settings,
             Message = "Setarile controllerului au fost actualizate.",
         }, cancellationToken);
     }
@@ -205,9 +224,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning)
+            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming)
             {
-                throw new InvalidOperationException("Metoda de plata nu poate fi schimbata in timpul unei operatii.");
+                throw new InvalidOperationException(DispenseMessages.PaymentMethodLockedDuringOperation);
             }
 
             switch (paymentMethod)
@@ -215,7 +234,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 case PaymentMethod.Cash:
                     if (!settings.CashPaymentEnabled)
                     {
-                        throw new InvalidOperationException("Plata cu numerar este dezactivata.");
+                        throw new InvalidOperationException(DispenseMessages.CashDisabled);
                     }
 
                     _session.ActivePaymentMethod = PaymentMethod.Cash;
@@ -223,9 +242,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                     if (_session.CurrentCreditAmount > 0)
                     {
                         _session.IsCardSelectionBlocked = true;
-                        _session.RequestedLiters = settings.PricePerLiter <= 0
-                            ? 0
-                            : Math.Round(_session.CurrentCreditAmount / settings.PricePerLiter, 2);
+                        _session.RequestedLiters = CalculateLitersFromCredit(_session.CurrentCreditAmount, settings.PricePerLiter);
                         _session.TotalAmount = _session.CurrentCreditAmount;
                     }
                     else
@@ -240,19 +257,19 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 case PaymentMethod.Card:
                     if (!settings.CardPaymentEnabled)
                     {
-                        throw new InvalidOperationException("Plata cu cardul este dezactivata.");
+                        throw new InvalidOperationException(DispenseMessages.CardDisabled);
                     }
 
                     if (_session.IsCardSelectionBlocked || _session.CurrentCreditAmount > 0)
                     {
-                        throw new InvalidOperationException("A fost introdus numerar. Finalizeaza sesiunea cash inainte de plata cu cardul.");
+                        throw new InvalidOperationException(DispenseMessages.CashInProgressFinishFirst);
                     }
 
                     _session.ActivePaymentMethod = PaymentMethod.Card;
                     break;
 
                 default:
-                    throw new InvalidOperationException("Metoda de plata nu este suportata.");
+                    throw new InvalidOperationException(DispenseMessages.PaymentMethodUnsupported);
             }
         }
         finally
@@ -266,7 +283,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         var settings = await GetCompatibleSettingsAsync(cancellationToken);
         if (!settings.CardPaymentEnabled)
         {
-            throw new InvalidOperationException("Plata cu cardul este dezactivata.");
+            throw new InvalidOperationException(DispenseMessages.CardDisabled);
         }
 
         var sanitizedLiters = Math.Max(0, Math.Round(liters, 2));
@@ -278,7 +295,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
             if (_session.IsCardSelectionBlocked || _session.CurrentCreditAmount > 0)
             {
-                throw new InvalidOperationException("A fost introdus numerar. Plata cu cardul nu mai este disponibila pentru sesiunea curenta.");
+                throw new InvalidOperationException(DispenseMessages.CardUnavailableCashSession);
             }
 
             _session.ActivePaymentMethod = PaymentMethod.Card;
@@ -322,7 +339,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             var amount = request.Amount;
             if (amount < 0)
             {
-                throw new InvalidOperationException("Valoarea creditului nu poate fi negativa.");
+                throw new InvalidOperationException(DispenseMessages.CreditCannotBeNegative);
             }
 
             var settings = await GetCompatibleSettingsAsync(cancellationToken);
@@ -330,7 +347,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "RemoteCredit",
+                Category = LogCategories.RemoteCredit,
                 Message = $"Credit remote setat din companion: {amount:0.00} RON.",
             }, cancellationToken);
             await _remoteCommandJournal.CompleteAsync(request.CommandId, $"Credit actualizat la {amount:0.00} RON.", cancellationToken);
@@ -356,27 +373,27 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
             if (command.PaymentMethod == PaymentMethod.Cash && !settings.CashPaymentEnabled)
             {
-                throw new InvalidOperationException("Plata cu numerar este dezactivata.");
+                throw new InvalidOperationException(DispenseMessages.CashDisabled);
             }
 
             if (command.PaymentMethod == PaymentMethod.Card && !settings.CardPaymentEnabled)
             {
-                throw new InvalidOperationException("Plata cu cardul este dezactivata.");
+                throw new InvalidOperationException(DispenseMessages.CardDisabled);
             }
 
             if (requestedLiters <= 0)
             {
-                throw new InvalidOperationException("Selecteaza cantitatea inainte de start.");
+                throw new InvalidOperationException(DispenseMessages.SelectQuantityFirst);
             }
 
             if (command.PaymentMethod == PaymentMethod.Cash && command.CreditAmount < requestedLiters * settings.PricePerLiter)
             {
-                throw new InvalidOperationException("Creditul introdus este insuficient pentru cantitatea selectata.");
+                throw new InvalidOperationException(DispenseMessages.InsufficientCredit);
             }
 
             if (settings.RuntimeMode == RuntimeMode.Production && !settings.Esp32Enabled)
             {
-                throw new InvalidOperationException("Dozarea in Production necesita ESP32 activ.");
+                throw new InvalidOperationException(DispenseMessages.DispenseRequiresEsp32);
             }
 
             var sale = new SaleTransaction
@@ -391,9 +408,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await _sync.WaitAsync(cancellationToken);
             try
             {
-                if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning)
+                if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming)
                 {
-                    throw new InvalidOperationException("Masina executa deja o operatie.");
+                    throw new InvalidOperationException(DispenseMessages.MachineBusy);
                 }
 
                 _session.ActivityState = MachineActivityState.Dispensing;
@@ -418,18 +435,187 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 if (!commandSent)
                 {
                     await FailActiveDispenseAsync(settings, sale, "Comanda ESP32 nu a putut fi trimisa.", cancellationToken);
-                    throw new InvalidOperationException("Comanda ESP32 nu a putut fi trimisa.");
+                    throw new InvalidOperationException(DispenseMessages.Esp32CommandFailed);
                 }
 
                 return;
             }
 
-            _ = Task.Run(() => SimulateDispenseAsync(settings, sale), CancellationToken.None);
+            RunObserved(() => SimulateDispenseAsync(settings, sale), "simulare dozare");
         }
         catch (Exception ex)
         {
             await _remoteCommandJournal.FailAsync(command.CommandId, ex.Message, cancellationToken);
             throw;
+        }
+    }
+
+    public async Task StopDispenseAsync(CancellationToken cancellationToken = default)
+    {
+        SaleTransaction? sale;
+        MachineSettings? settings;
+        decimal dispensedLiters;
+        decimal currentCreditAmount;
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            if (_session.ActivityState != MachineActivityState.Dispensing)
+            {
+                return;
+            }
+
+            sale = _activeSale;
+            settings = _activeDispenseSettings;
+            dispensedLiters = _session.DispensedLiters;
+            currentCreditAmount = _session.CurrentCreditAmount;
+            _session.ActivityState = MachineActivityState.Ready;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+
+        try
+        {
+            await _esp32Gateway.StopDispenseAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Severity = LogSeverity.Warning,
+                Category = LogCategories.Esp32,
+                Message = "Comanda de oprire dozare nu a putut fi confirmata de ESP32.",
+                Details = ex.Message,
+            }, cancellationToken);
+        }
+
+        if (sale is not null && settings is not null)
+        {
+            await CancelActiveDispenseAsync(
+                settings,
+                sale,
+                dispensedLiters,
+                currentCreditAmount,
+                $"Dozare oprita manual: {dispensedLiters:0.###} L din {sale.RequestedLiters:0.##} L.",
+                cancellationToken);
+        }
+    }
+
+    public async Task RunPrimingAsync(PrimingRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await TryBeginCommandAsync(request.CommandId, PrimingCommandType, request, cancellationToken))
+        {
+            return;
+        }
+
+        TaskCompletionSource<bool>? completion = null;
+
+        try
+        {
+            var settings = await GetCompatibleSettingsAsync(cancellationToken);
+            var targetLiters = Math.Round(request.TargetLiters, 3);
+            if (targetLiters is < 0.05m or > 1m)
+            {
+                throw new InvalidOperationException(DispenseMessages.PrimingVolumeRange);
+            }
+
+            if (settings.RuntimeMode == RuntimeMode.Production && !settings.Esp32Enabled)
+            {
+                throw new InvalidOperationException(DispenseMessages.PrimingRequiresEsp32);
+            }
+
+            completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            await _sync.WaitAsync(cancellationToken);
+            try
+            {
+                if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming)
+                {
+                    throw new InvalidOperationException(DispenseMessages.MachineBusy);
+                }
+
+                _session.ActivityState = MachineActivityState.Priming;
+                _session.ActivePaymentMethod = null;
+                _session.RequestedLiters = targetLiters;
+                _session.DispensedLiters = 0;
+                _session.TotalAmount = 0;
+                _session.IsCardSelectionBlocked = false;
+                _session.IsRemoteOperation = request.CommandId is not null && request.CommandId.Value != Guid.Empty;
+                _session.OperationMessage = _session.IsRemoteOperation
+                    ? "Se executa o operatie pornita din aplicatia companion."
+                    : string.Empty;
+                _lastDispenseProgressUtc = DateTimeOffset.MinValue;
+                _activePrimingCompletion = completion;
+            }
+            finally
+            {
+                _sync.Release();
+            }
+
+            var completed = false;
+            var timeout = request.Timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : request.Timeout;
+
+            if (settings.RuntimeMode == RuntimeMode.Production)
+            {
+                EnsureEsp32Started();
+                if (!await TrySendPrimingCommandAsync(settings, targetLiters, cancellationToken))
+                {
+                    throw new InvalidOperationException(DispenseMessages.PrimingCommandFailed);
+                }
+
+                completed = await Task.WhenAny(completion.Task, Task.Delay(timeout, cancellationToken)) == completion.Task;
+            }
+            else
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                await _sync.WaitAsync(cancellationToken);
+                try
+                {
+                    if (ReferenceEquals(_activePrimingCompletion, completion))
+                    {
+                        _session.DispensedLiters = targetLiters;
+                    }
+                }
+                finally
+                {
+                    _sync.Release();
+                }
+
+                completed = true;
+            }
+
+            if (!completed)
+            {
+                await TryStopEsp32PumpAsync("Amorsarea a depasit timeout-ul si pompa a fost oprita.", cancellationToken);
+                throw new TimeoutException("Amorsarea nu a detectat volumul tinta in timpul configurat.");
+            }
+
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = LogCategories.Priming,
+                Message = $"Amorsare finalizata pentru {targetLiters * 1000m:0} ml.",
+            }, cancellationToken);
+
+            await _remoteCommandJournal.CompleteAsync(request.CommandId, $"Amorsare {targetLiters * 1000m:0} ml finalizata.", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            if (completion is not null)
+            {
+                await TryStopEsp32PumpAsync("Amorsarea a fost oprita dupa eroare.", cancellationToken);
+            }
+
+            await _remoteCommandJournal.FailAsync(request.CommandId, ex.Message, cancellationToken);
+            throw;
+        }
+        finally
+        {
+            if (completion is not null)
+            {
+                await ResetPrimingSessionAsync(completion, cancellationToken);
+            }
         }
     }
 
@@ -443,16 +629,40 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         try
         {
             var settings = await GetCompatibleSettingsAsync(cancellationToken);
+            var isRemoteOperation = request.CommandId is not null && request.CommandId.Value != Guid.Empty;
+            var activeSanitation = new SanitationRecord
+            {
+                MachineId = settings.MachineId,
+                StartedAtUtc = DateTimeOffset.UtcNow,
+                Duration = TimeSpan.Zero,
+                Mode = request.Mode,
+                PulseOn = request.PulseOn,
+                PulseOff = request.PulseOff,
+                Notes = isRemoteOperation
+                    ? "Pornit din aplicatia companion. Oprit manual."
+                    : "Pornit din interfata locala a controllerului. Oprit manual.",
+            };
 
             await _sync.WaitAsync(cancellationToken);
             try
             {
-                if (_session.ActivityState == MachineActivityState.Dispensing)
+                if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming)
                 {
-                    throw new InvalidOperationException("Curatarea nu poate porni in timpul unei dozari.");
+                    throw new InvalidOperationException(DispenseMessages.SanitationBlockedDuringOperation);
                 }
 
                 _session.ActivityState = MachineActivityState.Cleaning;
+                _session.ActivePaymentMethod = null;
+                _session.RequestedLiters = 0;
+                _session.DispensedLiters = 0;
+                _session.TotalAmount = 0;
+                _session.IsCardSelectionBlocked = false;
+                _session.IsRemoteOperation = isRemoteOperation;
+                _session.OperationMessage = isRemoteOperation
+                    ? "Se executa o operatie pornita din aplicatia companion."
+                    : string.Empty;
+                _activeSanitation = activeSanitation;
+                _activeSanitationCommandId = request.CommandId;
             }
             finally
             {
@@ -460,43 +670,92 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             }
 
             EnsureEsp32Started();
-            _ = Task.Run(() => TrySendSanitationCommandAsync(request), CancellationToken.None);
-
-            await _sanitationRepository.SaveAsync(new SanitationRecord
-            {
-                MachineId = settings.MachineId,
-                Duration = request.Duration,
-                Mode = request.Mode,
-                PulseOn = request.PulseOn,
-                PulseOff = request.PulseOff,
-                Notes = "Rulat din interfata locala a controllerului.",
-            }, cancellationToken);
+            RunObserved(() => TrySendSanitationCommandAsync(request), "trimitere comanda curatare");
 
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "Sanitation",
-                Message = $"Curatare pornita in mod {request.Mode}.",
+                Category = LogCategories.Sanitation,
+                Message = $"Curatare pornita in mod {request.Mode}. Oprirea se face manual.",
             }, cancellationToken);
-
-            await Task.Delay(request.Duration, cancellationToken);
-
-            await _sync.WaitAsync(cancellationToken);
-            try
-            {
-                _session.ActivityState = MachineActivityState.Ready;
-                _session.ActivePaymentMethod = ResolveDefaultPaymentMethod(settings);
-            }
-            finally
-            {
-                _sync.Release();
-            }
-
-            await _remoteCommandJournal.CompleteAsync(request.CommandId, $"Curatare {request.Mode} finalizata.", cancellationToken);
         }
         catch (Exception ex)
         {
             await _remoteCommandJournal.FailAsync(request.CommandId, ex.Message, cancellationToken);
             throw;
+        }
+    }
+
+    public async Task StopSanitationAsync(Guid? commandId = null, CancellationToken cancellationToken = default)
+    {
+        if (!await TryBeginCommandAsync(commandId, CloudCommandTypes.StopSanitation, new { }, cancellationToken))
+        {
+            return;
+        }
+
+        SanitationRecord? sanitation;
+        Guid? activeCommandId;
+        var settings = await GetCompatibleSettingsAsync(cancellationToken);
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            if (_session.ActivityState != MachineActivityState.Cleaning)
+            {
+                await _remoteCommandJournal.CompleteAsync(commandId, "Nu exista curatare activa.", cancellationToken);
+                return;
+            }
+
+            sanitation = _activeSanitation;
+            activeCommandId = _activeSanitationCommandId;
+            if (sanitation is not null)
+            {
+                sanitation.Duration = DateTimeOffset.UtcNow - sanitation.StartedAtUtc;
+            }
+
+            _session.ActivityState = MachineActivityState.Ready;
+            _session.ActivePaymentMethod = ResolveDefaultPaymentMethod(settings);
+            _session.IsRemoteOperation = false;
+            _session.OperationMessage = string.Empty;
+            _activeSanitation = null;
+            _activeSanitationCommandId = null;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+
+        try
+        {
+            await _esp32Gateway.StopDispenseAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Severity = LogSeverity.Warning,
+                Category = LogCategories.Esp32,
+                Message = "Comanda de oprire curatare nu a putut fi confirmata de ESP32.",
+                Details = ex.Message,
+            }, cancellationToken);
+        }
+
+        if (sanitation is not null)
+        {
+            await _sanitationRepository.SaveAsync(sanitation, cancellationToken);
+        }
+
+        var message = sanitation is null
+            ? "Curatare oprita manual."
+            : $"Curatare {sanitation.Mode} oprita manual dupa {sanitation.Duration.TotalSeconds:0}s.";
+        await SafeLogAsync(new DeviceLogEntry
+        {
+            Category = LogCategories.Sanitation,
+            Message = message,
+        }, cancellationToken);
+        await _remoteCommandJournal.CompleteAsync(activeCommandId, message, cancellationToken);
+        if (commandId != activeCommandId)
+        {
+            await _remoteCommandJournal.CompleteAsync(commandId, message, cancellationToken);
         }
     }
 
@@ -511,18 +770,18 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         {
             if (request is null)
             {
-                throw new InvalidOperationException("Cererea OTA pentru ESP32 lipseste.");
+                throw new InvalidOperationException(DispenseMessages.FirmwareRequestMissing);
             }
 
             if (string.IsNullOrWhiteSpace(request.FirmwareUrl))
             {
-                throw new InvalidOperationException("URL-ul firmware-ului ESP32 este obligatoriu.");
+                throw new InvalidOperationException(DispenseMessages.FirmwareUrlRequired);
             }
 
             var settings = await GetCompatibleSettingsAsync(cancellationToken);
             if (!settings.Esp32Enabled)
             {
-                throw new InvalidOperationException("ESP32 este dezactivat din setari.");
+                throw new InvalidOperationException(DispenseMessages.Esp32Disabled);
             }
 
             EnsureEsp32Started(force: true);
@@ -530,7 +789,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = $"Update OTA trimis catre ESP32: {request.FirmwareUrl}",
             }, cancellationToken);
 
@@ -570,7 +829,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         var claimResult = await _pairingService.ClaimAsync(settings, request, cancellationToken);
         await SafeLogAsync(new DeviceLogEntry
         {
-            Category = "Pairing",
+            Category = LogCategories.Pairing,
             Message = "Aplicatia companion a fost imperecheata cu dozatorul.",
             Details = $"MachineId={claimResult.MachineId}; public={claimResult.PublicApiBaseUrl}; local={claimResult.LocalApiBaseUrl}",
         }, cancellationToken);
@@ -593,6 +852,11 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
     {
         if (!force)
         {
+            if (_billValidatorGateway.IsRunning)
+            {
+                return;
+            }
+
             if (_validatorStartTask is { IsCompleted: false })
             {
                 return;
@@ -635,11 +899,25 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             var settings = await GetCompatibleSettingsAsync();
             if (!settings.BillValidatorEnabled || !settings.CashPaymentEnabled)
             {
+                await _billValidatorGateway.StopAsync();
+                await SafeLogAsync(new DeviceLogEntry
+                {
+                    Category = LogCategories.Validator,
+                    Message = "Validator NV9 oprit deoarece plata cash sau validatorul este dezactivat.",
+                });
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(settings.BillValidatorPortName) || settings.BillValidatorBaudRate <= 0)
             {
+                await _billValidatorGateway.StopAsync();
+                await SafeLogAsync(new DeviceLogEntry
+                {
+                    Severity = LogSeverity.Warning,
+                    Category = LogCategories.Validator,
+                    Message = "Validator NV9 neporinit: port sau baud rate invalid.",
+                    Details = $"Port='{settings.BillValidatorPortName}', baud={settings.BillValidatorBaudRate}.",
+                });
                 return;
             }
 
@@ -647,13 +925,20 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 settings.BillValidatorPortName,
                 settings.BillValidatorBaudRate,
                 settings.BillValidatorEscrowMode);
+
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = LogCategories.Validator,
+                Message = $"Validator NV9 pornit pe {settings.BillValidatorPortName} la {settings.BillValidatorBaudRate} baud.",
+                Details = $"Escrow={(settings.BillValidatorEscrowMode ? "activ" : "inactiv")}; cash={(settings.CashPaymentEnabled ? "activ" : "inactiv")}.",
+            });
         }
         catch (Exception ex)
         {
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "Cash",
+                Category = LogCategories.Validator,
                 Message = "Validatorul NV9 nu a putut fi pornit.",
                 Details = ex.Message,
             });
@@ -685,7 +970,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = "Controllerul ESP32 nu a putut fi pornit.",
                 Details = ex.Message,
             });
@@ -696,11 +981,44 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         }
     }
 
-    private void OnBillValidatorNoteRead(decimal amount) => HandleNoteRead(amount);
+    private void OnBillValidatorNoteRead(decimal amount) => _ = HandleNoteReadAsync(amount);
 
     private void OnBillValidatorCreditAccepted(decimal amount) => _ = HandleCreditAcceptedAsync(amount);
 
     private void OnBillValidatorNoteRejected() => _ = HandleNoteRejectedAsync();
+
+    private void OnBillValidatorStatusChanged(string message)
+    {
+        Log.Info(ValidatorLogTag, message);
+
+        _ = SafeLogAsync(new DeviceLogEntry
+        {
+            Category = LogCategories.Validator,
+            Message = message,
+        });
+    }
+
+    private void OnBillValidatorFaulted(Exception exception)
+    {
+        _nextValidatorStartAttemptUtc = DateTimeOffset.UtcNow.AddSeconds(5);
+        _validatorStartTask = null;
+
+        Log.Warn(ValidatorLogTag, exception.ToString());
+
+        _ = SafeLogAsync(new DeviceLogEntry
+        {
+            Severity = LogSeverity.Warning,
+            Category = LogCategories.Validator,
+            Message = "Bucla validatorului NV9 a cazut; se va incerca reconectarea.",
+            Details = exception.ToString(),
+        });
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            EnsureBillValidatorStarted(force: true);
+        });
+    }
 
     private void OnEsp32SensorSnapshotReceived(SensorSnapshot snapshot) => _ = HandleEsp32SensorSnapshotAsync(snapshot);
 
@@ -710,20 +1028,20 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
     private void OnEsp32PortDetected(string portName) => _ = SafeLogAsync(new DeviceLogEntry
     {
-        Category = "ESP32",
+        Category = LogCategories.Esp32,
         Message = $"ESP32 conectat pe portul {portName}.",
     });
 
-    private void HandleNoteRead(decimal amount)
+    private async Task HandleNoteReadAsync(decimal amount)
     {
         try
         {
-            var settings = GetCompatibleSettingsAsync().GetAwaiter().GetResult();
-            var decision = DecideNoteHandling(settings, amount);
+            var settings = await GetCompatibleSettingsAsync();
+            var decision = await DecideNoteHandlingAsync(settings, amount);
 
             if (decision.Accept)
             {
-                _sync.Wait();
+                await _sync.WaitAsync();
                 try
                 {
                     NormalizeSessionUnsafe(settings);
@@ -743,17 +1061,17 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
                 if (settings.BillValidatorEscrowMode)
                 {
-                    _billValidatorGateway.AcceptEscrowAsync().GetAwaiter().GetResult();
+                    await _billValidatorGateway.AcceptEscrowAsync();
                 }
             }
             else
             {
-                _billValidatorGateway.ReturnInsertedNoteAsync().GetAwaiter().GetResult();
+                await _billValidatorGateway.ReturnInsertedNoteAsync();
             }
 
-            _ = SafeLogAsync(new DeviceLogEntry
+            await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = decision.Accept
                     ? settings.BillValidatorEscrowMode
                         ? $"Bancnota de {amount:0.00} RON a fost acceptata in escrow."
@@ -764,10 +1082,10 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         }
         catch (Exception ex)
         {
-            _ = SafeLogAsync(new DeviceLogEntry
+            await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = "Nu am putut procesa bancnota citita de validator.",
                 Details = ex.Message,
             });
@@ -781,7 +1099,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await AddCreditAsync(amount);
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = $"Credit adaugat de validator: {amount:0.00} RON.",
             });
         }
@@ -790,7 +1108,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = "Nu am putut aplica creditul validatorului.",
                 Details = ex.Message,
             });
@@ -812,9 +1130,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             _session.CurrentCreditAmount = replaceExisting
                 ? amount
                 : _session.CurrentCreditAmount + amount;
-            _session.RequestedLiters = settings.PricePerLiter <= 0
-                ? 0
-                : Math.Round(_session.CurrentCreditAmount / settings.PricePerLiter, 2);
+            _session.RequestedLiters = CalculateLitersFromCredit(_session.CurrentCreditAmount, settings.PricePerLiter);
             _session.TotalAmount = _session.CurrentCreditAmount;
         }
         finally
@@ -848,7 +1164,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = "Bancnota a fost respinsa sau a expirat din escrow.",
             });
         }
@@ -857,7 +1173,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "Cash",
+                Category = LogCategories.Cash,
                 Message = "Nu am putut reseta sesiunea cash dupa respingerea bancnotei.",
                 Details = ex.Message,
             });
@@ -886,7 +1202,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         await _sync.WaitAsync();
         try
         {
-            if (_session.ActivityState == MachineActivityState.Dispensing)
+            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Priming)
             {
                 _session.DispensedLiters = Math.Max(_session.DispensedLiters, Math.Round(dispensedLiters, 3));
                 _lastDispenseProgressUtc = DateTimeOffset.UtcNow;
@@ -902,6 +1218,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
     {
         SaleTransaction? sale = null;
         MachineSettings? settings = null;
+        TaskCompletionSource<bool>? primingCompletion = null;
 
         await _sync.WaitAsync();
         try
@@ -913,11 +1230,19 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 sale = _activeSale;
                 settings = _activeDispenseSettings;
             }
+            else if (_session.ActivityState == MachineActivityState.Priming)
+            {
+                _session.DispensedLiters = _session.RequestedLiters;
+                _lastDispenseProgressUtc = DateTimeOffset.UtcNow;
+                primingCompletion = _activePrimingCompletion;
+            }
         }
         finally
         {
             _sync.Release();
         }
+
+        primingCompletion?.TrySetResult(true);
 
         if (sale is not null && settings is not null && settings.RuntimeMode == RuntimeMode.Production)
         {
@@ -929,9 +1254,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         }
     }
 
-    private (bool Accept, string Reason) DecideNoteHandling(MachineSettings settings, decimal amount)
+    private async Task<(bool Accept, string Reason)> DecideNoteHandlingAsync(MachineSettings settings, decimal amount)
     {
-        _sync.Wait();
+        await _sync.WaitAsync();
         try
         {
             NormalizeSessionUnsafe(settings);
@@ -946,7 +1271,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 return (false, "Validatorul de bancnote este dezactivat din setari.");
             }
 
-            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.OutOfService)
+            if (_session.ActivityState is MachineActivityState.Dispensing or MachineActivityState.Cleaning or MachineActivityState.Priming or MachineActivityState.OutOfService)
             {
                 return (false, "Masina nu poate primi numerar in starea curenta.");
             }
@@ -976,7 +1301,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await _esp32Gateway.SendDispenseRequestAsync(requestedLiters, settings.PulsesPerLiter);
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = $"Cerere de dozare trimisa catre ESP32 pentru {requestedLiters:0.##} L.",
             });
             return true;
@@ -986,11 +1311,60 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = "Nu am putut trimite cererea de dozare catre ESP32.",
                 Details = ex.Message,
             });
             return false;
+        }
+    }
+
+    private async Task<bool> TrySendPrimingCommandAsync(MachineSettings settings, decimal targetLiters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _esp32Gateway.SendDispenseRequestAsync(targetLiters, settings.PulsesPerLiter, cancellationToken);
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Category = LogCategories.Esp32,
+                Message = $"Comanda de amorsare trimisa catre ESP32 pentru {targetLiters * 1000m:0} ml.",
+            }, cancellationToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Severity = LogSeverity.Warning,
+                Category = LogCategories.Esp32,
+                Message = "Nu am putut trimite comanda de amorsare catre ESP32.",
+                Details = ex.Message,
+            }, cancellationToken);
+            return false;
+        }
+    }
+
+    private async Task TryStopEsp32PumpAsync(string reason, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _esp32Gateway.StopDispenseAsync(cancellationToken);
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Severity = LogSeverity.Warning,
+                Category = LogCategories.Priming,
+                Message = reason,
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await SafeLogAsync(new DeviceLogEntry
+            {
+                Severity = LogSeverity.Error,
+                Category = LogCategories.Priming,
+                Message = "Nu am putut opri pompa dupa amorsare.",
+                Details = ex.Message,
+            }, cancellationToken);
         }
     }
 
@@ -1004,10 +1378,13 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 return;
             }
 
-            await _esp32Gateway.SendSanitationAsync(request.Mode, request.Duration, request.PulseOn, request.PulseOff);
+            var effectiveDuration = request.Duration > TimeSpan.Zero
+                ? request.Duration
+                : TimeSpan.FromDays(1);
+            await _esp32Gateway.SendSanitationAsync(request.Mode, effectiveDuration, request.PulseOn, request.PulseOff);
             await SafeLogAsync(new DeviceLogEntry
             {
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = $"Comanda de curatare {request.Mode} a fost trimisa catre ESP32.",
             });
         }
@@ -1016,7 +1393,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             await SafeLogAsync(new DeviceLogEntry
             {
                 Severity = LogSeverity.Warning,
-                Category = "ESP32",
+                Category = LogCategories.Esp32,
                 Message = "Nu am putut trimite comanda de curatare catre ESP32.",
                 Details = ex.Message,
             });
@@ -1039,19 +1416,26 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
                 await Task.Delay(500);
 
                 var completed = false;
+                var stopped = false;
                 await _sync.WaitAsync();
                 try
                 {
-                    if (DateTimeOffset.UtcNow - _lastDispenseProgressUtc > TimeSpan.FromSeconds(2))
+                    stopped = _session.ActivityState != MachineActivityState.Dispensing;
+                    if (!stopped && DateTimeOffset.UtcNow - _lastDispenseProgressUtc > TimeSpan.FromSeconds(2))
                     {
                         _session.DispensedLiters = Math.Min(sale.RequestedLiters, _session.DispensedLiters + step);
                     }
 
-                    completed = _session.DispensedLiters >= sale.RequestedLiters;
+                    completed = !stopped && _session.DispensedLiters >= sale.RequestedLiters;
                 }
                 finally
                 {
                     _sync.Release();
+                }
+
+                if (stopped)
+                {
+                    return;
                 }
 
                 if (completed)
@@ -1089,12 +1473,62 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
 
         await SafeLogAsync(new DeviceLogEntry
         {
-            Category = "Dispense",
+            Category = LogCategories.Dispense,
             Message = message,
         }, cancellationToken);
         await _remoteCommandJournal.CompleteAsync(_activeDispenseCommandId, message, cancellationToken);
 
         await ResetDispenseSessionAsync(settings, cancellationToken);
+    }
+
+    private async Task CancelActiveDispenseAsync(
+        MachineSettings settings,
+        SaleTransaction sale,
+        decimal dispensedLiters,
+        decimal currentCreditAmount,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        var settlement = SaleMath.ComputeCancellation(
+            sale.PaymentMethod,
+            sale.RequestedLiters,
+            dispensedLiters,
+            currentCreditAmount,
+            sale.PricePerLiter);
+
+        sale.DispensedLiters = settlement.BilledLiters;
+        sale.CompletedAtUtc = DateTimeOffset.UtcNow;
+        sale.Status = SaleStatus.Cancelled;
+        sale.TotalAmount = settlement.BilledAmount;
+
+        var remainingCredit = settlement.RemainingCredit;
+        var remainingLiters = settlement.RemainingLiters;
+        var remainingTotal = settlement.RemainingTotal;
+
+        settings.CurrentStockLiters = Math.Max(0, settings.CurrentStockLiters - sale.DispensedLiters);
+        await _settingsRepository.SaveAsync(settings, cancellationToken);
+        await _salesRepository.SaveAsync(sale, cancellationToken);
+
+        await SafeLogAsync(new DeviceLogEntry
+        {
+            Severity = LogSeverity.Warning,
+            Category = LogCategories.Dispense,
+            Message = message,
+        }, cancellationToken);
+        await _remoteCommandJournal.FailAsync(_activeDispenseCommandId, message, cancellationToken);
+
+        await ResetDispenseSessionAsync(
+            settings,
+            new DispenseSessionState
+            {
+                ActivityState = MachineActivityState.Ready,
+                ActivePaymentMethod = sale.PaymentMethod,
+                RequestedLiters = remainingLiters,
+                CurrentCreditAmount = remainingCredit,
+                TotalAmount = remainingTotal,
+                IsCardSelectionBlocked = remainingCredit > 0,
+            },
+            cancellationToken);
     }
 
     private async Task FailActiveDispenseAsync(
@@ -1109,7 +1543,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         await SafeLogAsync(new DeviceLogEntry
         {
             Severity = LogSeverity.Error,
-            Category = "Dispense",
+            Category = LogCategories.Dispense,
             Message = "Dozarea a esuat.",
             Details = errorMessage,
         }, cancellationToken);
@@ -1118,20 +1552,58 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         await ResetDispenseSessionAsync(settings, cancellationToken);
     }
 
-    private async Task ResetDispenseSessionAsync(MachineSettings settings, CancellationToken cancellationToken = default)
+    private Task ResetDispenseSessionAsync(MachineSettings settings, CancellationToken cancellationToken = default) =>
+        ResetDispenseSessionAsync(
+            settings,
+            new DispenseSessionState
+            {
+                ActivityState = MachineActivityState.Ready,
+                ActivePaymentMethod = ResolveDefaultPaymentMethod(settings),
+            },
+            cancellationToken);
+
+    private async Task ResetDispenseSessionAsync(
+        MachineSettings settings,
+        DispenseSessionState nextSession,
+        CancellationToken cancellationToken = default)
     {
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            _session = new DispenseSessionState
-            {
-                ActivityState = MachineActivityState.Ready,
-                ActivePaymentMethod = ResolveDefaultPaymentMethod(settings),
-            };
+            _session = nextSession;
             _lastDispenseProgressUtc = DateTimeOffset.MinValue;
             _activeSale = null;
             _activeDispenseSettings = null;
             _activeDispenseCommandId = null;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    private async Task ResetPrimingSessionAsync(TaskCompletionSource<bool> completion, CancellationToken cancellationToken = default)
+    {
+        var settings = await GetCompatibleSettingsAsync(cancellationToken);
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            if (ReferenceEquals(_activePrimingCompletion, completion))
+            {
+                _activePrimingCompletion = null;
+            }
+
+            if (_session.ActivityState == MachineActivityState.Priming)
+            {
+                _session.ActivityState = MachineActivityState.Ready;
+                _session.ActivePaymentMethod = ResolveDefaultPaymentMethod(settings);
+                _session.RequestedLiters = 0;
+                _session.DispensedLiters = 0;
+                _session.TotalAmount = 0;
+                _session.IsRemoteOperation = false;
+                _session.OperationMessage = string.Empty;
+            }
         }
         finally
         {
@@ -1183,6 +1655,31 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         }
     }
 
+    /// <summary>
+    /// Runs a background operation detached from the caller, but logs any escaped exception
+    /// instead of leaving the faulted task unobserved.
+    /// </summary>
+    private void RunObserved(Func<Task> operation, string context)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await operation();
+            }
+            catch (Exception ex)
+            {
+                await SafeLogAsync(new DeviceLogEntry
+                {
+                    Severity = LogSeverity.Error,
+                    Category = LogCategories.Background,
+                    Message = $"Operatie de fundal esuata: {context}.",
+                    Details = ex.ToString(),
+                });
+            }
+        }, CancellationToken.None);
+    }
+
     private void NormalizeSessionUnsafe(MachineSettings settings)
     {
         if (_session.ActivePaymentMethod is null || !IsPaymentMethodAvailable(settings, _session.ActivePaymentMethod.Value))
@@ -1194,9 +1691,7 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
         {
             _session.IsCardSelectionBlocked = true;
             _session.ActivePaymentMethod = PaymentMethod.Cash;
-            _session.RequestedLiters = settings.PricePerLiter <= 0
-                ? 0
-                : Math.Round(_session.CurrentCreditAmount / settings.PricePerLiter, 2);
+            _session.RequestedLiters = CalculateLitersFromCredit(_session.CurrentCreditAmount, settings.PricePerLiter);
             _session.TotalAmount = _session.CurrentCreditAmount;
             return;
         }
@@ -1214,6 +1709,9 @@ public sealed class MachineRuntimeService : IMachineRuntimeService
             PaymentMethod.Card => settings.CardPaymentEnabled,
             _ => false,
         };
+
+    private static decimal CalculateLitersFromCredit(decimal creditAmount, decimal pricePerLiter) =>
+        SaleMath.LitersFromCredit(creditAmount, pricePerLiter);
 
     private static PaymentMethod ResolveDefaultPaymentMethod(MachineSettings settings)
     {

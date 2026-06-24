@@ -14,6 +14,7 @@ public static class ConnectionStrategyResolver
             ? record.LocalSecureApiBaseUrl
             : record.LocalApiBaseUrl;
         var localAvailable = IsSameLocalNetwork(localHint);
+        var shouldTryLocalFirst = ShouldTryLocalFirst(record, localAvailable);
         var directFallback = BuildDirectCandidate(record.PublicApiBaseUrl, record);
         var cloudFallback = BuildCloudCandidate(record.CloudApiBaseUrl);
         var localFallback = BuildLocalCandidate(localHint);
@@ -22,7 +23,7 @@ public static class ConnectionStrategyResolver
             MachineConnectionPreference.LocalFirst => [localFallback, directFallback, cloudFallback],
             MachineConnectionPreference.DirectFirst => [directFallback, localAvailable ? localFallback : null, cloudFallback, localAvailable ? null : localFallback],
             MachineConnectionPreference.CloudBridgeOnly => [cloudFallback],
-            _ => localAvailable
+            _ => shouldTryLocalFirst
                 ? [localFallback, directFallback, cloudFallback]
                 : [directFallback, cloudFallback, localFallback],
         };
@@ -35,20 +36,12 @@ public static class ConnectionStrategyResolver
         var localHint = !string.IsNullOrWhiteSpace(payload.LocalSecureApiBaseUrl)
             ? payload.LocalSecureApiBaseUrl
             : payload.LocalApiBaseUrl;
-        var localAvailable = IsSameLocalNetwork(localHint);
-        var candidates = localAvailable
-            ? new ConnectionEndpointCandidate?[]
-            {
-                BuildLocalCandidate(localHint),
-                BuildDirectCandidate(payload.PublicApiBaseUrl),
-                BuildCloudCandidate(payload.CloudApiBaseUrl),
-            }
-            : new ConnectionEndpointCandidate?[]
-            {
-                BuildDirectCandidate(payload.PublicApiBaseUrl),
-                BuildCloudCandidate(payload.CloudApiBaseUrl),
-                BuildLocalCandidate(localHint),
-            };
+        var candidates = new ConnectionEndpointCandidate?[]
+        {
+            BuildDirectCandidate(payload.PublicApiBaseUrl),
+            BuildCloudCandidate(payload.CloudApiBaseUrl),
+            BuildLocalCandidate(localHint),
+        };
 
         return Normalize(candidates);
     }
@@ -82,11 +75,28 @@ public static class ConnectionStrategyResolver
             return false;
         }
 
-        foreach (var (address, mask) in GetLocalIPv4Networks())
+        var localNetworks = GetLocalIPv4Networks().ToList();
+        foreach (var (address, mask) in localNetworks)
         {
             if (IsInSameSubnet(address, targetAddress, mask))
             {
                 return true;
+            }
+        }
+
+        if (IsPrivateIPv4(targetAddress))
+        {
+            if (localNetworks.Count == 0)
+            {
+                return true;
+            }
+
+            foreach (var (address, _) in localNetworks)
+            {
+                if (SharesPrivatePrefix(address, targetAddress))
+                {
+                    return true;
+                }
             }
         }
 
@@ -104,9 +114,7 @@ public static class ConnectionStrategyResolver
                 ? new[] { MachineConnectionMode.DirectInternet, MachineConnectionMode.LocalNetwork, MachineConnectionMode.CloudBridge }
                 : new[] { MachineConnectionMode.DirectInternet, MachineConnectionMode.CloudBridge, MachineConnectionMode.LocalNetwork },
             MachineConnectionPreference.CloudBridgeOnly => new[] { MachineConnectionMode.CloudBridge },
-            _ => sameLocalNetwork
-                ? new[] { MachineConnectionMode.LocalNetwork, MachineConnectionMode.DirectInternet, MachineConnectionMode.CloudBridge }
-                : new[] { MachineConnectionMode.DirectInternet, MachineConnectionMode.CloudBridge, MachineConnectionMode.LocalNetwork },
+            _ => new[] { MachineConnectionMode.DirectInternet, MachineConnectionMode.CloudBridge, MachineConnectionMode.LocalNetwork },
         };
 
         return orderedCandidates;
@@ -145,6 +153,27 @@ public static class ConnectionStrategyResolver
             : MachineConnectionMode.DirectInternet;
     }
 
+    public static MachineConnectionMode InferActiveMode(PairedMachineRecord record)
+    {
+        var activeEndpoint = !string.IsNullOrWhiteSpace(record.LastConnectionEndpoint)
+            ? record.LastConnectionEndpoint
+            : record.ApiBaseUrl;
+
+        var inferredMode = InferMode(record, activeEndpoint);
+        return inferredMode == MachineConnectionMode.Unknown
+            ? record.LastConnectionMode
+            : inferredMode;
+    }
+
+    public static string GetDisplayEndpoint(PairedMachineRecord record)
+    {
+        return !string.IsNullOrWhiteSpace(record.LastConnectionEndpoint)
+            ? record.LastConnectionEndpoint
+            : (!string.IsNullOrWhiteSpace(record.ApiBaseUrl)
+                ? record.ApiBaseUrl
+                : record.GetCandidateApiBaseUrls().FirstOrDefault() ?? string.Empty);
+    }
+
     private static ConnectionEndpointCandidate? BuildLocalCandidate(string? apiBaseUrl)
     {
         var normalized = NormalizeUrl(apiBaseUrl);
@@ -152,6 +181,15 @@ public static class ConnectionStrategyResolver
             ? null
             : new ConnectionEndpointCandidate(normalized, MachineConnectionMode.LocalNetwork);
     }
+
+    private static string GetLocalHint(PairedMachineRecord record) =>
+        !string.IsNullOrWhiteSpace(record.LocalSecureApiBaseUrl)
+            ? record.LocalSecureApiBaseUrl
+            : record.LocalApiBaseUrl;
+
+    private static bool ShouldTryLocalFirst(PairedMachineRecord record, bool localAvailable) =>
+        localAvailable
+        && record.LastConnectionMode == MachineConnectionMode.LocalNetwork;
 
     private static ConnectionEndpointCandidate? BuildDirectCandidate(string? apiBaseUrl, PairedMachineRecord? record = null)
     {
@@ -287,6 +325,42 @@ public static class ConnectionStrategyResolver
         }
 
         return true;
+    }
+
+    private static bool IsPrivateIPv4(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10
+            || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+            || (bytes[0] == 192 && bytes[1] == 168);
+    }
+
+    private static bool SharesPrivatePrefix(IPAddress left, IPAddress right)
+    {
+        var leftBytes = left.GetAddressBytes();
+        var rightBytes = right.GetAddressBytes();
+
+        if (leftBytes[0] != rightBytes[0])
+        {
+            return false;
+        }
+
+        if (leftBytes[0] == 10)
+        {
+            return true;
+        }
+
+        if (leftBytes[0] == 172 && leftBytes[1] >= 16 && leftBytes[1] <= 31)
+        {
+            return leftBytes[1] == rightBytes[1];
+        }
+
+        if (leftBytes[0] == 192 && leftBytes[1] == 168)
+        {
+            return leftBytes[1] == rightBytes[1] && leftBytes[2] == rightBytes[2];
+        }
+
+        return false;
     }
 
     private static string NormalizeUrl(string? apiBaseUrl) => apiBaseUrl?.Trim().TrimEnd('/') ?? string.Empty;

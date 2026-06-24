@@ -243,6 +243,22 @@ app.MapPost("/api/device/sanitation", async (HttpRequest request, SanitationRequ
     });
 });
 
+app.MapPost("/api/device/sanitation/stop", async (HttpRequest request, CloudStore store, CancellationToken cancellationToken) =>
+{
+    var token = GetCompanionToken(request);
+    if (token is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var commandId = await store.QueueStopSanitationAsync(token, cancellationToken);
+    return Results.Ok(new
+    {
+        status = "accepted",
+        commandId,
+    });
+});
+
 app.MapPost("/api/device/credit", async (HttpRequest request, RemoteCreditRequest creditRequest, CloudStore store, CancellationToken cancellationToken) =>
 {
     var token = GetCompanionToken(request);

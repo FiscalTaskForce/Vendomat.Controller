@@ -91,6 +91,32 @@ public sealed class VendomatRemoteClient
             cancellationToken);
     }
 
+    public Task<RemoteCommandResult> StopSanitationAsync(
+        PairedMachineRecord record,
+        CancellationToken cancellationToken = default) =>
+        SendWithoutBodyWithFallbackAsync(
+            record,
+            CloudTunnelActions.StopSanitation,
+            tunnelPayload: null,
+            baseUrl => CreateRequest(HttpMethod.Post, baseUrl, "api/device/sanitation/stop", record.CompanionAccessToken),
+            WriteAttemptTimeout,
+            cancellationToken);
+
+    public Task<RemoteCommandResult> RunPrimingAsync(
+        PairedMachineRecord record,
+        PrimingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        request.CommandId ??= Guid.NewGuid();
+        return SendWithoutBodyWithFallbackAsync(
+            record,
+            CloudTunnelActions.RunPriming,
+            request,
+            baseUrl => CreateRequest(HttpMethod.Post, baseUrl, "api/device/priming", record.CompanionAccessToken, request),
+            WriteAttemptTimeout,
+            cancellationToken);
+    }
+
     public async Task<RemoteCreditResult> AddRemoteCreditAsync(
         PairedMachineRecord record,
         decimal amount,

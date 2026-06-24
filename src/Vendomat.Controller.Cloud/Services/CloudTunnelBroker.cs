@@ -173,6 +173,15 @@ public sealed class CloudTunnelBroker(CloudStore store)
                     Status = (await QueueSanitationAsync(companionSession, request.Payload, cancellationToken)).Status,
                 }),
 
+            CloudTunnelActions.StopSanitation => BuildSuccess(
+                request,
+                new CloudTunnelAcceptedResponse
+                {
+                    Status = (await QueueStopSanitationAsync(companionSession, cancellationToken)).Status,
+                }),
+
+            CloudTunnelActions.RunPriming => BuildError(request, "Amorsarea necesita conexiune live cu tableta dozatorului."),
+
             CloudTunnelActions.AddCredit => BuildSuccess(
                 request,
                 await QueueCreditAsync(companionSession, request.Payload, cancellationToken)),
@@ -188,6 +197,14 @@ public sealed class CloudTunnelBroker(CloudStore store)
     {
         var sanitationRequest = DeserializePayload<SanitationRequest>(payload);
         await store.QueueSanitationAsync(companionSession.CompanionAccessToken, sanitationRequest, cancellationToken);
+        return new CloudTunnelAcceptedResponse();
+    }
+
+    private async Task<CloudTunnelAcceptedResponse> QueueStopSanitationAsync(
+        CloudStore.CloudCompanionSession companionSession,
+        CancellationToken cancellationToken)
+    {
+        await store.QueueStopSanitationAsync(companionSession.CompanionAccessToken, cancellationToken);
         return new CloudTunnelAcceptedResponse();
     }
 
@@ -261,6 +278,9 @@ public sealed class CloudTunnelBroker(CloudStore store)
                         PulseOn = command.SanitationCommand.PulseOn,
                         PulseOff = command.SanitationCommand.PulseOff,
                     }),
+
+            var action when string.Equals(action, CloudCommandTypes.StopSanitation, StringComparison.Ordinal) =>
+                BuildRequest(machineId, command.CommandId.ToString("N"), CloudTunnelActions.StopSanitation, new { }),
 
             var action when string.Equals(action, CloudCommandTypes.AddCredit, StringComparison.Ordinal) && command.CreditCommand is not null =>
                 BuildRequest(

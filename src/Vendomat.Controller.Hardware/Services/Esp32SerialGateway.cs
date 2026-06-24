@@ -131,6 +131,19 @@ public sealed class Esp32SerialGateway : IEsp32Gateway
             throw new InvalidOperationException("URL-ul firmware-ului ESP32 este obligatoriu.");
         }
 
+        if (!Uri.TryCreate(firmwareUrl, UriKind.Absolute, out var firmwareUri)
+            || (firmwareUri.Scheme != Uri.UriSchemeHttp && firmwareUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("URL-ul firmware-ului ESP32 trebuie sa fie http(s) absolut.");
+        }
+
+        var expectedSha256 = NormalizeSha256(request.ExpectedSha256);
+        if (expectedSha256.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "Update-ul OTA necesita SHA-256 (64 caractere hex) al firmware-ului pentru verificare inainte de flash.");
+        }
+
         var payload = new
         {
             Type = 20,
@@ -138,6 +151,7 @@ public sealed class Esp32SerialGateway : IEsp32Gateway
             Url = firmwareUrl,
             WifiSsid = request.WifiSsid?.Trim() ?? string.Empty,
             WifiPassword = request.WifiPassword ?? string.Empty,
+            ExpectedSha256 = expectedSha256,
             ExpectedMd5 = request.ExpectedMd5?.Trim() ?? string.Empty,
         };
 
@@ -150,6 +164,17 @@ public sealed class Esp32SerialGateway : IEsp32Gateway
             Type = 4,
             MsgId = Guid.NewGuid().ToString("N"),
         }, cancellationToken);
+
+    private static string NormalizeSha256(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length != 64 || !normalized.All(Uri.IsHexDigit))
+        {
+            return string.Empty;
+        }
+
+        return normalized.ToLowerInvariant();
+    }
 
     private void AttachPort(SerialPort port, string portName, int baudRate, bool autoDiscover)
     {

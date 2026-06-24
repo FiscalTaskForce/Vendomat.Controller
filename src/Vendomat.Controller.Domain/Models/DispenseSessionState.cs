@@ -9,6 +9,8 @@ public sealed class DispenseSessionState
     public decimal CurrentCreditAmount { get; set; }
     public decimal TotalAmount { get; set; }
     public bool IsCardSelectionBlocked { get; set; }
+    public bool IsRemoteOperation { get; set; }
+    public string OperationMessage { get; set; } = string.Empty;
     public MachineActivityState ActivityState { get; set; } = MachineActivityState.Ready;
     public PaymentMethod? ActivePaymentMethod { get; set; }
 }

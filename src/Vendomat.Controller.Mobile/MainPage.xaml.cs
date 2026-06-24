@@ -7,7 +7,6 @@ namespace Vendomat.Controller.Mobile;
 
 public partial class MainPage : ContentPage
 {
-    private MainPageViewModel ViewModel => (MainPageViewModel)BindingContext;
     private bool _manualLaunchSubscribed;
     private CancellationTokenSource? _refreshLoopCts;
 
@@ -20,13 +19,43 @@ public partial class MainPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        EnsureManualLaunchSubscription();
-        _refreshLoopCts?.Cancel();
-        _refreshLoopCts = new CancellationTokenSource();
-        await ViewModel.LoadAsync();
-        await ViewModel.RefreshCommand.ExecuteAsync(null);
-        await ConsumePendingManualLaunchAsync();
-        _ = RunRefreshLoopAsync(_refreshLoopCts.Token);
+
+        try
+        {
+            var viewModel = EnsureViewModel();
+            EnsureManualLaunchSubscription();
+
+            _refreshLoopCts?.Cancel();
+            var refreshLoopCts = new CancellationTokenSource();
+            _refreshLoopCts = refreshLoopCts;
+
+            await viewModel.LoadAsync();
+            if (refreshLoopCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await viewModel.RefreshSilentlyAsync();
+            if (refreshLoopCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await ConsumePendingManualLaunchAsync();
+            if (_refreshLoopCts != refreshLoopCts || refreshLoopCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _ = RunRefreshLoopAsync(refreshLoopCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainPage] OnAppearing failed: {ex}");
+        }
     }
 
     protected override void OnDisappearing()
@@ -54,8 +83,17 @@ public partial class MainPage : ContentPage
         _manualLaunchSubscribed = true;
     }
 
-    private async void OnPendingManualLaunchChanged(object? sender, EventArgs e) =>
-        await MainThread.InvokeOnMainThreadAsync(ConsumePendingManualLaunchAsync);
+    private async void OnPendingManualLaunchChanged(object? sender, EventArgs e)
+    {
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(ConsumePendingManualLaunchAsync);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainPage] Manual launch handling failed: {ex}");
+        }
+    }
 
     private async Task ConsumePendingManualLaunchAsync()
     {
@@ -71,7 +109,7 @@ public partial class MainPage : ContentPage
             if (await pairingViewModel.ApplyManualLaunchRequestAsync(request))
             {
                 Debug.WriteLine("[ManualPairing] Auto pairing succeeded from MainPage.");
-                await ViewModel.LoadAsync();
+                await EnsureViewModel().LoadAsync();
                 return;
             }
 
@@ -88,12 +126,28 @@ public partial class MainPage : ContentPage
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                await MainThread.InvokeOnMainThreadAsync(() => ViewModel.RefreshCommand.ExecuteAsync(null));
+                await MainThread.InvokeOnMainThreadAsync(() => EnsureViewModel().RefreshSilentlyAsync());
             }
         }
         catch (OperationCanceledException)
         {
         }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainPage] Refresh loop failed: {ex}");
+        }
+    }
+
+    private MainPageViewModel EnsureViewModel()
+    {
+        if (BindingContext is MainPageViewModel viewModel)
+        {
+            return viewModel;
+        }
+
+        viewModel = ServiceRegistry.GetRequiredService<MainPageViewModel>();
+        BindingContext = viewModel;
+        return viewModel;
     }
 
     private static string BuildScannerRoute(ManualPairingLaunchRequest request)

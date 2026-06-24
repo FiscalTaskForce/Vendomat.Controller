@@ -28,6 +28,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
     };
     private readonly ConcurrentDictionary<Guid, PendingPairingSecret> _pendingPairingSecrets = new();
     private readonly string _connectionString = BuildConnectionString(environment, configuration);
+    private readonly bool _allowMachineAutoRegister = ResolveAllowMachineAutoRegister(environment, configuration);
     private bool _isInitialized;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -545,6 +546,17 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
             cancellationToken);
     }
 
+    public async Task<Guid> QueueStopSanitationAsync(string companionAccessToken, CancellationToken cancellationToken = default)
+    {
+        var machine = await ResolveMachineByCompanionTokenAsync(companionAccessToken, cancellationToken);
+        return await InsertCommandAsync(
+            machine.MachineId,
+            CloudCommandTypes.StopSanitation,
+            "{}",
+            CompanionAccessTokenSecurity.GetAuditPrefix(companionAccessToken),
+            cancellationToken);
+    }
+
     public async Task<Guid> QueueCreditAsync(string companionAccessToken, decimal amount, CancellationToken cancellationToken = default)
     {
         if (amount < 0)
@@ -710,6 +722,8 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
                     break;
                 case CloudCommandTypes.RunSanitation:
                     envelope.SanitationCommand = JsonSerializer.Deserialize<CloudSanitationCommand>(payloadJson, _jsonOptions);
+                    break;
+                case CloudCommandTypes.StopSanitation:
                     break;
                 case CloudCommandTypes.AddCredit:
                     envelope.CreditCommand = JsonSerializer.Deserialize<CloudCreditCommand>(payloadJson, _jsonOptions);
@@ -902,7 +916,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
 
         if (result is null || result is DBNull)
         {
-            if (allowCreate)
+            if (allowCreate && _allowMachineAutoRegister)
             {
                 return;
             }
@@ -999,13 +1013,18 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
 
     private static async Task EnsureTextColumnAsync(SqliteConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
     {
+        // These reach DDL via string interpolation (identifiers cannot be parameterized), so
+        // validate them defensively even though current callers only pass compile-time constants.
+        var safeTable = EnsureSafeSqlIdentifier(tableName);
+        var safeColumn = EnsureSafeSqlIdentifier(columnName);
+
         await using var pragma = connection.CreateCommand();
-        pragma.CommandText = $"PRAGMA table_info({tableName});";
+        pragma.CommandText = $"PRAGMA table_info({safeTable});";
         await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
 
         while (await reader.ReadAsync(cancellationToken))
         {
-            if (string.Equals(reader.GetString(reader.GetOrdinal("name")), columnName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(reader.GetString(reader.GetOrdinal("name")), safeColumn, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -1014,8 +1033,25 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         await reader.DisposeAsync();
 
         await using var alter = connection.CreateCommand();
-        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} TEXT NOT NULL DEFAULT '';";
+        alter.CommandText = $"ALTER TABLE {safeTable} ADD COLUMN {safeColumn} TEXT NOT NULL DEFAULT '';";
         await alter.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Guards SQL identifiers (table/column names) that must be string-interpolated into DDL.
+    /// Only plain ASCII identifiers are allowed, so a stray value can never inject SQL.
+    /// </summary>
+    private static string EnsureSafeSqlIdentifier(string identifier)
+    {
+        if (!string.IsNullOrEmpty(identifier)
+            && identifier.Length <= 64
+            && (char.IsLetter(identifier[0]) || identifier[0] == '_')
+            && identifier.All(c => char.IsLetterOrDigit(c) || c == '_'))
+        {
+            return identifier;
+        }
+
+        throw new ArgumentException($"Unsafe SQL identifier '{identifier}'.", nameof(identifier));
     }
 
     private static async Task ApplyMigrationAsync(
@@ -1187,6 +1223,23 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
         }.ToString();
+    }
+
+    /// <summary>
+    /// Controls whether an unknown machine may register itself on first contact (trust-on-first-use).
+    /// Convenient in development, but in production a machine with an unused GUID could otherwise
+    /// claim an identity before the genuine device connects. Defaults to off outside Development;
+    /// override with the <c>Cloud:AllowMachineAutoRegister</c> setting.
+    /// </summary>
+    private static bool ResolveAllowMachineAutoRegister(IHostEnvironment environment, IConfiguration configuration)
+    {
+        var configured = configuration["Cloud:AllowMachineAutoRegister"];
+        if (!string.IsNullOrWhiteSpace(configured) && bool.TryParse(configured.Trim(), out var allow))
+        {
+            return allow;
+        }
+
+        return environment.IsDevelopment();
     }
 
     private static Guid ParseGuid(string value) =>

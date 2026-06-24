@@ -8,129 +8,206 @@
              Shell.NavBarIsVisible="False"
              x:DataType="viewModels:MachineDetailViewModel">
 
+    <Grid>
     <ScrollView>
-        <VerticalStackLayout Padding="16"
-                             Spacing="14">
-            <Grid HeightRequest="76"
-                  ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="12">
-                <Button Text="{localization:Translate CommonBack}"
-                        Clicked="OnBackClicked"
-                        Padding="16,10"
-                        VerticalOptions="Center" />
-                <VerticalStackLayout Grid.Column="1"
-                                     Spacing="2"
-                                     VerticalOptions="Center">
-                    <Label Text="{Binding MachineName}"
-                           FontSize="22"
-                           FontAttributes="Bold" />
-                    <Label Text="{Binding UpdatedAtText}"
-                           FontSize="12"
-                           TextColor="{StaticResource Gray500}" />
-                </VerticalStackLayout>
-                <Button Grid.Column="2"
-                        Text="{localization:Translate CommonRefresh}"
-                        Command="{Binding RefreshCommand}" />
-            </Grid>
+        <VerticalStackLayout Padding="20,18,20,28"
+                             Spacing="18">
+            <Border Padding="20"
+                    BackgroundColor="{StaticResource Primary}"
+                    StrokeThickness="0">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto"
+                      ColumnDefinitions="*,Auto"
+                      RowSpacing="16"
+                      ColumnSpacing="12">
+                    <Button Text=""
+                            Command="{Binding ToggleDashboardMenuCommand}"
+                            Style="{StaticResource GhostButtonStyle}"
+                            Padding="12,8"
+                            HeightRequest="42"
+                            MinimumHeightRequest="42"
+                            MinimumWidthRequest="0"
+                            FontSize="13"
+                            ContentLayout="Left,6"
+                            HorizontalOptions="Start"
+                            VerticalOptions="Start">
+                        <Button.ImageSource>
+                            <FontImageSource Glyph="&#x2630;"
+                                             FontFamily="OpenSansSemibold"
+                                             Size="18"
+                                             Color="White" />
+                        </Button.ImageSource>
+                    </Button>
 
-            <Border Padding="16">
-                <VerticalStackLayout Spacing="6">
-                    <Label Text="{localization:Translate MobileDetailStatusTitle}"
-                           FontSize="12"
-                           TextColor="{StaticResource Gray500}" />
-                    <Label Text="{Binding StatusText}"
-                           FontSize="22"
-                           FontAttributes="Bold" />
-                </VerticalStackLayout>
+                    <Button Grid.Column="1"
+                            Text="{localization:Translate CommonRefresh}"
+                            Command="{Binding RefreshCommand}"
+                            Style="{StaticResource GhostButtonStyle}"
+                            Padding="12,8"
+                            HeightRequest="42"
+                            MinimumHeightRequest="42"
+                            MinimumWidthRequest="0"
+                            FontSize="13"
+                            ContentLayout="Left,6"
+                            HorizontalOptions="End"
+                            VerticalOptions="Start">
+                        <Button.ImageSource>
+                            <FontImageSource Glyph="&#x21BB;"
+                                             FontFamily="OpenSansSemibold"
+                                             Size="17"
+                                             Color="White" />
+                        </Button.ImageSource>
+                    </Button>
+
+                    <VerticalStackLayout Grid.Row="1"
+                                         Grid.ColumnSpan="2"
+                                          Spacing="6"
+                                          VerticalOptions="Center">
+                        <Label Text="{Binding MachineName}"
+                               Style="{StaticResource PageTitleLabelStyle}"
+                               TextColor="White"
+                               FontSize="26"
+                               LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding UpdatedAtText}"
+                               Style="{StaticResource PageSubtitleLabelStyle}"
+                               TextColor="#E1F3E9" />
+                    </VerticalStackLayout>
+
+                    <Border Grid.Row="2"
+                            Grid.ColumnSpan="2"
+                             Padding="16"
+                             BackgroundColor="#22FFFFFF"
+                             Stroke="#33FFFFFF"
+                            StrokeThickness="1">
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="12">
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="{localization:Translate MobileDetailStatusTitle}"
+                                       Style="{StaticResource MetricCaptionLabelStyle}"
+                                       TextColor="#D9F1E3" />
+                                <Label Text="{Binding StatusText}"
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       TextColor="White"
+                                       FontSize="24" />
+                            </VerticalStackLayout>
+
+                            <Border Grid.Column="1"
+                                    Padding="12,8"
+                                    BackgroundColor="#FFF1E2"
+                                    StrokeThickness="0"
+                                    HorizontalOptions="End"
+                                    VerticalOptions="Center">
+                                <Label Text="{Binding ConnectionModeText}"
+                                       Style="{StaticResource BadgeLabelStyle}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="3"
+                            Grid.ColumnSpan="2"
+                             Padding="14"
+                            BackgroundColor="#18FFFFFF"
+                            Stroke="#24FFFFFF"
+                            StrokeThickness="1">
+                        <Label Text="{Binding ApiBaseUrlText}"
+                               Style="{StaticResource SectionCaptionLabelStyle}"
+                               TextColor="White"
+                               LineBreakMode="CharacterWrap" />
+                    </Border>
+                </Grid>
             </Border>
 
             <Grid ColumnDefinitions="*,*"
+                  IsVisible="{Binding IsStockViewSelected}"
                   ColumnSpacing="12">
-                <Border Padding="16">
+                <Border Style="{StaticResource MetricCardBorderStyle}"
+                        BackgroundColor="{StaticResource InfoSurface}">
                     <VerticalStackLayout Spacing="4">
                         <Label Text="{localization:Translate MobileDetailTemperatureTitle}"
-                               FontSize="12"
-                               TextColor="{StaticResource Gray500}" />
+                               Style="{StaticResource MetricCaptionLabelStyle}" />
                         <Label Text="{Binding TemperatureText}"
-                               FontSize="20"
-                               FontAttributes="Bold" />
+                               Style="{StaticResource MetricValueLabelStyle}" />
                     </VerticalStackLayout>
                 </Border>
+
                 <Border Grid.Column="1"
-                        Padding="16">
+                        Style="{StaticResource MetricCardBorderStyle}">
                     <VerticalStackLayout Spacing="4">
                         <Label Text="{localization:Translate MobileDetailStockTitle}"
-                               FontSize="12"
-                               TextColor="{StaticResource Gray500}" />
+                               Style="{StaticResource MetricCaptionLabelStyle}" />
                         <Label Text="{Binding StockText}"
-                               FontSize="20"
-                               FontAttributes="Bold" />
+                               Style="{StaticResource MetricValueLabelStyle}" />
                     </VerticalStackLayout>
                 </Border>
             </Grid>
 
             <Grid ColumnDefinitions="*,*"
+                  IsVisible="{Binding IsStockViewSelected}"
                   ColumnSpacing="12">
-                <Border Padding="16">
+                <Border Style="{StaticResource MetricCardBorderStyle}"
+                        BackgroundColor="{StaticResource WarmSurface}">
                     <VerticalStackLayout Spacing="4">
                         <Label Text="{localization:Translate MobileDetailPriceTitle}"
-                               FontSize="12"
-                               TextColor="{StaticResource Gray500}" />
+                               Style="{StaticResource MetricCaptionLabelStyle}" />
                         <Label Text="{Binding PriceText}"
-                               FontSize="20"
-                               FontAttributes="Bold" />
+                               Style="{StaticResource MetricValueLabelStyle}" />
                     </VerticalStackLayout>
                 </Border>
+
                 <Border Grid.Column="1"
-                        Padding="16">
+                        Style="{StaticResource MetricCardBorderStyle}"
+                        BackgroundColor="{StaticResource Secondary}">
                     <VerticalStackLayout Spacing="4">
                         <Label Text="{localization:Translate MobileDetailCreditTitle}"
-                               FontSize="12"
-                               TextColor="{StaticResource Gray500}" />
+                               Style="{StaticResource MetricCaptionLabelStyle}" />
                         <Label Text="{Binding CreditText}"
-                               FontSize="20"
-                               FontAttributes="Bold" />
+                               Style="{StaticResource MetricValueLabelStyle}" />
                     </VerticalStackLayout>
                 </Border>
             </Grid>
 
-            <Border Padding="16">
+            <Border Style="{StaticResource CardBorderStyle}"
+                    IsVisible="{Binding IsStockViewSelected}">
                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
                       ColumnDefinitions="Auto,*"
-                      ColumnSpacing="12"
-                      RowSpacing="8">
+                      ColumnSpacing="14"
+                      RowSpacing="10">
                     <Label Text="{localization:Translate MobileDetailPaymentTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Column="1"
                            Text="{Binding PaymentText}" />
+
                     <Label Grid.Row="1"
                            Text="{localization:Translate MobileDetailStateTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Row="1"
                            Grid.Column="1"
                            Text="{Binding ActivityText}" />
+
                     <Label Grid.Row="2"
                            Text="{localization:Translate MobileDetailContactTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Row="2"
                            Grid.Column="1"
                            Text="{Binding ContactText}" />
+
                     <Label Grid.Row="3"
                            Text="{localization:Translate MobileDetailApiBaseUrlTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Row="3"
                            Grid.Column="1"
                            Text="{Binding ApiBaseUrlText}"
                            LineBreakMode="CharacterWrap" />
+
                     <Label Grid.Row="4"
                            Text="{localization:Translate MobileConnectionActiveModeTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Row="4"
                            Grid.Column="1"
                            Text="{Binding ConnectionModeText}" />
+
                     <Label Grid.Row="5"
                            Text="{localization:Translate MobileConnectionFallbackTitle}"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource MetricCaptionLabelStyle}" />
                     <Label Grid.Row="5"
                            Grid.Column="1"
                            Text="{Binding ConnectionStrategyText}"
@@ -138,20 +215,24 @@
                 </Grid>
             </Border>
 
-            <Border Padding="16">
-                <VerticalStackLayout Spacing="10">
+            <Border Style="{StaticResource CardBorderStyle}"
+                    IsVisible="{Binding IsCreditViewSelected}">
+                <VerticalStackLayout Spacing="14">
                     <Label Text="{localization:Translate MobileDetailRemoteCreditTitle}"
-                           FontSize="16"
-                           FontAttributes="Bold" />
+                           Style="{StaticResource SectionTitleLabelStyle}" />
                     <Label Text="{localization:Translate MobileDetailRemoteCreditSubtitle}"
-                           FontSize="12"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource PageSubtitleLabelStyle}" />
+
                     <Grid ColumnDefinitions="*,Auto"
                           ColumnSpacing="12">
-                        <Entry Text="{Binding RemoteCreditAmountText}"
-                               Keyboard="Numeric"
-                               Placeholder="10"
-                               HeightRequest="52" />
+                        <Border Style="{StaticResource SoftCardBorderStyle}"
+                                Padding="14,4">
+                            <Entry Text="{Binding RemoteCreditAmountText}"
+                                   Keyboard="Numeric"
+                                   Placeholder="10"
+                                   HeightRequest="50" />
+                        </Border>
+
                         <Button Grid.Column="1"
                                 Text="{localization:Translate MobileDetailRemoteCreditButton}"
                                 Command="{Binding AddRemoteCreditCommand}"
@@ -160,205 +241,386 @@
                 </VerticalStackLayout>
             </Border>
 
-            <Border Padding="16">
-                <VerticalStackLayout Spacing="12">
+            <Border Style="{StaticResource CardBorderStyle}"
+                    IsVisible="{Binding IsSalesViewSelected}">
+                <VerticalStackLayout Spacing="14">
                     <Label Text="{localization:Translate MobileDetailSalesSectionTitle}"
-                           FontSize="16"
-                           FontAttributes="Bold" />
+                           Style="{StaticResource SectionTitleLabelStyle}" />
 
                     <Grid ColumnDefinitions="*,*"
                           ColumnSpacing="12">
-                        <Border Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                        <Border Style="{StaticResource MetricCardBorderStyle}"
+                                BackgroundColor="{StaticResource InfoSurface}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailTodayRevenueTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding TodayRevenueText}"
-                                       FontSize="18"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="18" />
                                 <Label Text="{Binding TodayLitersText}"
-                                       FontSize="12"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource SectionCaptionLabelStyle}" />
                             </VerticalStackLayout>
                         </Border>
+
                         <Border Grid.Column="1"
-                                Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                                Style="{StaticResource MetricCardBorderStyle}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailTodaySalesCountTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding TodaySalesCountText}"
-                                       FontSize="18"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="18" />
                                 <Label Text="{Binding LastSaleText}"
-                                       FontSize="12"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource SectionCaptionLabelStyle}" />
                             </VerticalStackLayout>
                         </Border>
                     </Grid>
 
                     <Grid ColumnDefinitions="*,*"
                           ColumnSpacing="12">
-                        <Border Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                        <Border Style="{StaticResource MetricCardBorderStyle}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailTotalRevenueTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding TotalRevenueText}"
-                                       FontSize="18"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="18" />
                                 <Label Text="{Binding TotalLitersText}"
-                                       FontSize="12"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource SectionCaptionLabelStyle}" />
                             </VerticalStackLayout>
                         </Border>
+
                         <Border Grid.Column="1"
-                                Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                                Style="{StaticResource MetricCardBorderStyle}"
+                                BackgroundColor="{StaticResource Secondary}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailTotalSalesCountTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding TotalSalesCountText}"
-                                       FontSize="18"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="18" />
                             </VerticalStackLayout>
                         </Border>
                     </Grid>
 
                     <Label Text="{localization:Translate MobileDetailRecentSalesTitle}"
-                           FontSize="14"
-                           FontAttributes="Bold" />
+                           Style="{StaticResource SectionTitleLabelStyle}"
+                           FontSize="16" />
+
                     <CollectionView ItemsSource="{Binding RecentSales}"
                                     IsVisible="{Binding HasSalesHistory}"
                                     SelectionMode="None">
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="models:DashboardListItem">
-                                <Border Margin="0,0,0,8"
-                                        Padding="12"
-                                        BackgroundColor="#FFF7EF"
-                                        Stroke="#E7DDCF"
-                                        StrokeThickness="1">
+                                <Border Margin="0,0,0,10"
+                                        Style="{StaticResource SoftCardBorderStyle}"
+                                        BackgroundColor="{StaticResource WarmSurface}">
                                     <Grid ColumnDefinitions="*,Auto"
                                           ColumnSpacing="10">
-                                        <VerticalStackLayout Spacing="2">
+                                        <VerticalStackLayout Spacing="3">
                                             <Label Text="{Binding Title}"
                                                    FontSize="14"
                                                    FontAttributes="Bold" />
                                             <Label Text="{Binding Subtitle}"
-                                                   FontSize="12"
-                                                   TextColor="{StaticResource Gray500}" />
+                                                   Style="{StaticResource SectionCaptionLabelStyle}" />
                                         </VerticalStackLayout>
                                         <Label Grid.Column="1"
                                                Text="{Binding Value}"
-                                               FontSize="12"
+                                               Style="{StaticResource BadgeLabelStyle}"
                                                VerticalOptions="Center" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
+
                     <Label Text="{localization:Translate MobileDetailNoSalesHistory}"
                            IsVisible="{Binding HasSalesHistory, Converter={StaticResource InverseBooleanConverter}}"
-                           FontSize="13"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource PageSubtitleLabelStyle}" />
                 </VerticalStackLayout>
             </Border>
 
-            <Border Padding="16">
-                <VerticalStackLayout Spacing="12">
+            <Border Style="{StaticResource CardBorderStyle}"
+                    IsVisible="{Binding IsSanitationViewSelected}">
+                <VerticalStackLayout Spacing="14">
                     <Label Text="{localization:Translate MobileDetailSanitationSectionTitle}"
-                           FontSize="16"
-                           FontAttributes="Bold" />
-                    <Grid ColumnDefinitions="*,*"
-                          ColumnSpacing="12">
-                        <Border Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                           Style="{StaticResource SectionTitleLabelStyle}" />
+
+                    <Grid RowDefinitions="Auto,Auto"
+                          ColumnDefinitions="*,*"
+                          ColumnSpacing="12"
+                          RowSpacing="12">
+                        <Border Style="{StaticResource MetricCardBorderStyle}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailLastSanitationTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding LastSanitationText}"
-                                       FontSize="16"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="16" />
                             </VerticalStackLayout>
                         </Border>
+
                         <Border Grid.Column="1"
-                                Padding="12"
-                                BackgroundColor="#F8FAFC"
-                                Stroke="#E2E8F0">
-                            <VerticalStackLayout Spacing="2">
+                                Style="{StaticResource MetricCardBorderStyle}"
+                                BackgroundColor="{StaticResource Secondary}">
+                            <VerticalStackLayout Spacing="4">
                                 <Label Text="{localization:Translate MobileDetailSanitationCountTitle}"
-                                       FontSize="11"
-                                       TextColor="{StaticResource Gray500}" />
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
                                 <Label Text="{Binding SanitationCountText}"
-                                       FontSize="16"
-                                       FontAttributes="Bold" />
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="20" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Grid.Row="1"
+                                Grid.ColumnSpan="2"
+                                Style="{StaticResource MetricCardBorderStyle}"
+                                BackgroundColor="{StaticResource InfoSurface}">
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="{localization:Translate MobileDetailSanitationLast7DaysTitle}"
+                                       Style="{StaticResource MetricCaptionLabelStyle}" />
+                                <Label Text="{Binding SanitationLast7DaysText}"
+                                       Style="{StaticResource MetricValueLabelStyle}"
+                                       FontSize="20" />
                             </VerticalStackLayout>
                         </Border>
                     </Grid>
 
-                    <Grid ColumnDefinitions="*,*"
-                          ColumnSpacing="12">
+                    <VerticalStackLayout Spacing="10">
                         <Button Text="{localization:Translate MobileDetailRunContinuousCleaning}"
-                                Command="{Binding RunContinuousCleaningCommand}" />
-                        <Button Grid.Column="1"
-                                Text="{localization:Translate MobileDetailRunPulsedCleaning}"
-                                Command="{Binding RunPulsedCleaningCommand}" />
-                    </Grid>
+                                Command="{Binding RunContinuousCleaningCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                HorizontalOptions="Fill" />
+                        <Button Text="{localization:Translate MobileDetailRunPulsedCleaning}"
+                                Command="{Binding RunPulsedCleaningCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalOptions="Fill" />
+                        <Button Text="{localization:Translate MobileDetailStopCleaning}"
+                                Command="{Binding StopCleaningCommand}"
+                                IsVisible="{Binding IsCleaning}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                BackgroundColor="{StaticResource DangerSurface}"
+                                TextColor="{StaticResource DangerText}"
+                                HorizontalOptions="Fill" />
+                        <Button Text="{localization:Translate SettingsPrime200Ml}"
+                                Command="{Binding RunPrimingCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalOptions="Fill" />
+                    </VerticalStackLayout>
 
                     <Label Text="{localization:Translate MobileDetailRecentSanitationTitle}"
-                           FontSize="14"
-                           FontAttributes="Bold" />
+                           Style="{StaticResource SectionTitleLabelStyle}"
+                           FontSize="16" />
+
                     <CollectionView ItemsSource="{Binding RecentSanitations}"
                                     IsVisible="{Binding HasSanitationHistory}"
                                     SelectionMode="None">
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="models:DashboardListItem">
-                                <Border Margin="0,0,0,8"
-                                        Padding="12"
-                                        BackgroundColor="#F2F8F5"
-                                        Stroke="#D8E7DE"
-                                        StrokeThickness="1">
-                                    <Grid ColumnDefinitions="*,Auto"
-                                          ColumnSpacing="10">
-                                        <VerticalStackLayout Spacing="2">
-                                            <Label Text="{Binding Title}"
-                                                   FontSize="14"
-                                                   FontAttributes="Bold" />
-                                            <Label Text="{Binding Subtitle}"
-                                                   FontSize="12"
-                                                   TextColor="{StaticResource Gray500}" />
-                                        </VerticalStackLayout>
-                                        <Label Grid.Column="1"
-                                               Text="{Binding Value}"
-                                               FontSize="12"
-                                               LineBreakMode="TailTruncation"
-                                               VerticalOptions="Center" />
-                                    </Grid>
+                                <Border Margin="0,0,0,10"
+                                        Style="{StaticResource SoftCardBorderStyle}"
+                                        BackgroundColor="{StaticResource SuccessSurface}">
+                                    <VerticalStackLayout Spacing="6">
+                                        <Label Text="{Binding Title}"
+                                               FontSize="15"
+                                               FontAttributes="Bold"
+                                               LineBreakMode="WordWrap" />
+                                        <Label Text="{Binding Subtitle}"
+                                               Style="{StaticResource SectionCaptionLabelStyle}"
+                                               LineBreakMode="WordWrap" />
+                                        <Border Padding="10,8"
+                                                BackgroundColor="#80FFFFFF"
+                                                Stroke="#BFE4D8"
+                                                StrokeThickness="1">
+                                            <Label Text="{Binding Value}"
+                                                   Style="{StaticResource SectionCaptionLabelStyle}"
+                                                   TextColor="{StaticResource PrimaryDarkText}"
+                                                   LineBreakMode="WordWrap"
+                                                   MaxLines="5" />
+                                        </Border>
+                                    </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
+
                     <Label Text="{localization:Translate MobileDetailNoSanitationHistory}"
                            IsVisible="{Binding HasSanitationHistory, Converter={StaticResource InverseBooleanConverter}}"
-                           FontSize="13"
-                           TextColor="{StaticResource Gray500}" />
+                           Style="{StaticResource PageSubtitleLabelStyle}" />
                 </VerticalStackLayout>
             </Border>
 
-            <Button Text="{localization:Translate MobileDetailOpenSettings}"
-                    Command="{Binding OpenSettingsCommand}"
-                    HeightRequest="52" />
+            <Border Style="{StaticResource CardBorderStyle}"
+                    IsVisible="{Binding IsLogsViewSelected}">
+                <VerticalStackLayout Spacing="14">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileDetailLogsSectionTitle}"
+                               Style="{StaticResource SectionTitleLabelStyle}" />
+                        <Label Text="{localization:Translate MobileDetailLogsSectionSubtitle}"
+                               Style="{StaticResource PageSubtitleLabelStyle}" />
+                    </VerticalStackLayout>
+
+                    <CollectionView ItemsSource="{Binding RecentLogs}"
+                                    IsVisible="{Binding HasLogs}"
+                                    SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:DashboardListItem">
+                                <Border Margin="0,0,0,10"
+                                        Style="{StaticResource SoftCardBorderStyle}"
+                                        BackgroundColor="{StaticResource InfoSurface}">
+                                    <VerticalStackLayout Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontAttributes="Bold"
+                                                   LineBreakMode="WordWrap" />
+                                            <Border Grid.Column="1"
+                                                    Padding="9,6"
+                                                    BackgroundColor="#80FFFFFF"
+                                                    Stroke="#BFE4D8"
+                                                    StrokeThickness="1">
+                                                <Label Text="{Binding Value}"
+                                                       Style="{StaticResource BadgeLabelStyle}"
+                                                       FontSize="11" />
+                                            </Border>
+                                        </Grid>
+
+                                        <Label Text="{Binding Subtitle}"
+                                               Style="{StaticResource SectionCaptionLabelStyle}"
+                                               LineBreakMode="WordWrap"
+                                               MaxLines="6" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Label Text="{localization:Translate MobileDetailNoLogs}"
+                           IsVisible="{Binding HasLogs, Converter={StaticResource InverseBooleanConverter}}"
+                           Style="{StaticResource PageSubtitleLabelStyle}" />
+                </VerticalStackLayout>
+            </Border>
+
         </VerticalStackLayout>
     </ScrollView>
 
+    <Grid IsVisible="{Binding IsDashboardMenuOpen}"
+          BackgroundColor="#99000000">
+        <BoxView BackgroundColor="Transparent">
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseDashboardMenuCommand}" />
+            </BoxView.GestureRecognizers>
+        </BoxView>
+
+        <Border WidthRequest="312"
+                Padding="18"
+                BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                HorizontalOptions="Start"
+                VerticalOptions="Fill">
+            <Grid RowDefinitions="Auto,*,Auto"
+                  RowSpacing="18">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="{localization:Translate MobileDetailMenuTitle}"
+                           Style="{StaticResource SectionTitleLabelStyle}" />
+                    <Label Text="{Binding MachineName}"
+                           Style="{StaticResource PageSubtitleLabelStyle}" />
+                </VerticalStackLayout>
+
+                <ScrollView Grid.Row="1">
+                    <VerticalStackLayout Spacing="10">
+                        <Button Text="{localization:Translate MobileDetailStockViewTitle}"
+                                Command="{Binding ShowStockViewCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button"
+                                             Binding="{Binding IsStockViewSelected}"
+                                             Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+
+                        <Button Text="{localization:Translate MobileDetailCreditViewTitle}"
+                                Command="{Binding ShowCreditViewCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button"
+                                             Binding="{Binding IsCreditViewSelected}"
+                                             Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+
+                        <Button Text="{localization:Translate MobileDetailSalesSectionTitle}"
+                                Command="{Binding ShowSalesViewCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button"
+                                             Binding="{Binding IsSalesViewSelected}"
+                                             Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+
+                        <Button Text="{localization:Translate MobileDetailSanitationSectionTitle}"
+                                Command="{Binding ShowSanitationViewCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button"
+                                             Binding="{Binding IsSanitationViewSelected}"
+                                             Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+
+                        <Button Text="{localization:Translate MobileDetailLogsSectionTitle}"
+                                Command="{Binding ShowLogsViewCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button"
+                                             Binding="{Binding IsLogsViewSelected}"
+                                             Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="White" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+
+                        <Button Text="{localization:Translate MobileDetailOpenSettings}"
+                                Command="{Binding OpenSettingsCommand}"
+                                HeightRequest="52"
+                                HorizontalOptions="Fill" />
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <Button Grid.Row="2"
+                        Text="{localization:Translate MobileDetailExitDashboard}"
+                        Clicked="OnBackClicked"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        HeightRequest="52" />
+            </Grid>
+        </Border>
+    </Grid>
+    </Grid>
 </ContentPage>

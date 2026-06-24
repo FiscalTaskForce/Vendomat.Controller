@@ -194,8 +194,11 @@ public partial class MainPage : ContentPage
         if (!isValid)
         {
             _enteredAdminPasscode = string.Empty;
+            var message = ViewModel.AdminUnlockRetrySeconds > 0
+                ? string.Format(T(nameof(AppLanguageStrings.DashboardAdminUnlockLockedOut)), ViewModel.AdminUnlockRetrySeconds)
+                : T(nameof(AppLanguageStrings.DashboardAdminUnlockInvalid));
             UpdateAdminPromptDisplay(
-                T(nameof(AppLanguageStrings.DashboardAdminUnlockInvalid)),
+                message,
                 GetColorResource("Danger", Colors.IndianRed));
             return;
         }

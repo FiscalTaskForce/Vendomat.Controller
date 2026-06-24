@@ -52,7 +52,19 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
             languageService.GetText(nameof(AppLanguageStrings.MobileDevicesLastSeenFormat)),
             LastSeenUtc.Value.LocalDateTime);
 
-    public string SnapshotSummary => $"{LastKnownStockLiters:0.##} L · {LastKnownTemperatureCelsius:0.0} °C · {LastKnownPricePerLiter:0.00} RON";
+    public string SnapshotSummary => $"{StockText} | {TemperatureText} | {PriceText}";
+
+    public string StockLabel => $"{languageService.GetText(nameof(AppLanguageStrings.MobileDetailStockTitle))}:";
+
+    public string StockText => $"{LastKnownStockLiters:0.##} L";
+
+    public string TemperatureLabel => $"{languageService.GetText(nameof(AppLanguageStrings.MobileDetailTemperatureTitle))}:";
+
+    public string TemperatureText => $"{LastKnownTemperatureCelsius:0.0} ℃";
+
+    public string PriceLabel => $"{languageService.GetText(nameof(AppLanguageStrings.MobileDetailPriceTitle))}:";
+
+    public string PriceText => $"{LastKnownPricePerLiter:0.00} RON";
 
     partial void OnIsOnlineChanged(bool value)
     {
@@ -62,11 +74,23 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
 
     partial void OnLastSeenUtcChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(LastSeenText));
 
-    partial void OnLastKnownStockLitersChanged(decimal value) => OnPropertyChanged(nameof(SnapshotSummary));
+    partial void OnLastKnownStockLitersChanged(decimal value)
+    {
+        OnPropertyChanged(nameof(SnapshotSummary));
+        OnPropertyChanged(nameof(StockText));
+    }
 
-    partial void OnLastKnownTemperatureCelsiusChanged(float value) => OnPropertyChanged(nameof(SnapshotSummary));
+    partial void OnLastKnownTemperatureCelsiusChanged(float value)
+    {
+        OnPropertyChanged(nameof(SnapshotSummary));
+        OnPropertyChanged(nameof(TemperatureText));
+    }
 
-    partial void OnLastKnownPricePerLiterChanged(decimal value) => OnPropertyChanged(nameof(SnapshotSummary));
+    partial void OnLastKnownPricePerLiterChanged(decimal value)
+    {
+        OnPropertyChanged(nameof(SnapshotSummary));
+        OnPropertyChanged(nameof(PriceText));
+    }
 
     partial void OnLastConnectionModeChanged(MachineConnectionMode value) => OnPropertyChanged(nameof(ConnectionModeText));
 
@@ -74,17 +98,13 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
     {
         MachineId = record.MachineId;
         MachineName = record.MachineName;
-        ApiBaseUrl = string.IsNullOrWhiteSpace(record.ApiBaseUrl)
-            ? record.GetCandidateApiBaseUrls().FirstOrDefault() ?? string.Empty
-            : record.ApiBaseUrl;
+        ApiBaseUrl = ConnectionStrategyResolver.GetDisplayEndpoint(record);
         IsOnline = record.LastSeenOnline;
         LastSeenUtc = record.LastSeenUtc;
         LastKnownStockLiters = record.LastKnownStockLiters;
         LastKnownTemperatureCelsius = record.LastKnownTemperatureCelsius;
         LastKnownPricePerLiter = record.LastKnownPricePerLiter;
-        LastConnectionMode = record.LastConnectionMode == MachineConnectionMode.Unknown
-            ? ConnectionStrategyResolver.InferMode(record, ApiBaseUrl)
-            : record.LastConnectionMode;
+        LastConnectionMode = ConnectionStrategyResolver.InferActiveMode(record);
     }
 
     public void RefreshLocalized()
@@ -92,5 +112,8 @@ public partial class DeviceCardViewModel(LanguageService languageService) : Obse
         OnPropertyChanged(nameof(AvailabilityText));
         OnPropertyChanged(nameof(LastSeenText));
         OnPropertyChanged(nameof(ConnectionModeText));
+        OnPropertyChanged(nameof(StockLabel));
+        OnPropertyChanged(nameof(TemperatureLabel));
+        OnPropertyChanged(nameof(PriceLabel));
     }
 }

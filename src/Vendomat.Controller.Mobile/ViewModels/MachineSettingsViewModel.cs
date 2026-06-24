@@ -17,7 +17,6 @@ public partial class MachineSettingsViewModel(
     VendomatRemoteClient remoteClient,
     LanguageService languageService) : ObservableObject
 {
-    private static readonly TimeSpan RemoteRefreshInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RemoteApplyTimeout = TimeSpan.FromSeconds(18);
     private static readonly TimeSpan RemoteApplyPollInterval = TimeSpan.FromMilliseconds(750);
     private const string SalesTabKey = "sales";
@@ -32,13 +31,13 @@ public partial class MachineSettingsViewModel(
     private PairedMachineRecord? _record;
     private MachineSettings? _loadedSettings;
     private string _statusMessageKey = nameof(AppLanguageStrings.MobileSettingsStatusLoading);
-    private CancellationTokenSource? _refreshLoopCts;
     private bool _isApplyingRemoteSettings;
-    private bool _isSaving;
-    private DateTime _lastLocalEditUtc = DateTime.MinValue;
 
     [ObservableProperty]
     private string selectedTab = ConnectionTabKey;
+
+    [ObservableProperty]
+    private bool isSettingsMenuOpen;
 
     [ObservableProperty]
     private MachineConnectionPreference selectedConnectionPreference = MachineConnectionPreference.Auto;
@@ -165,6 +164,7 @@ public partial class MachineSettingsViewModel(
             or nameof(ConnectionAvailabilityText)
             or nameof(ConnectionFallbackText)
             or nameof(SelectedTab)
+            or nameof(IsSettingsMenuOpen)
             or nameof(IsConnectionTabSelected)
             or nameof(IsSalesTabSelected)
             or nameof(IsGeneralTabSelected)
@@ -176,7 +176,6 @@ public partial class MachineSettingsViewModel(
             return;
         }
 
-        _lastLocalEditUtc = DateTime.UtcNow;
     }
 
     partial void OnSelectedTabChanged(string value)
@@ -188,6 +187,7 @@ public partial class MachineSettingsViewModel(
         OnPropertyChanged(nameof(IsValidatorTabSelected));
         OnPropertyChanged(nameof(IsEsp32TabSelected));
         OnPropertyChanged(nameof(IsCleaningTabSelected));
+        IsSettingsMenuOpen = false;
     }
 
     partial void OnSelectedConnectionPreferenceChanged(MachineConnectionPreference value)
@@ -202,8 +202,6 @@ public partial class MachineSettingsViewModel(
         languageService.LanguageChanged -= OnLanguageChanged;
         languageService.LanguageChanged += OnLanguageChanged;
 
-        _refreshLoopCts?.Cancel();
-        _refreshLoopCts = new CancellationTokenSource();
         _machineId = machineId;
         SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusLoading));
 
@@ -218,22 +216,22 @@ public partial class MachineSettingsViewModel(
         RebuildConnectionModeOptions();
         RefreshConnectionSummary();
 
-        var loaded = await RefreshFromRemoteAsync(updateStatus: true);
-        if (loaded)
-        {
-            _ = RunRefreshLoopAsync(_refreshLoopCts.Token);
-        }
+        await RefreshFromRemoteAsync(updateStatus: true);
     }
 
     public void Stop()
     {
-        _refreshLoopCts?.Cancel();
-        _refreshLoopCts = null;
         languageService.LanguageChanged -= OnLanguageChanged;
     }
 
     [RelayCommand]
     private Task Save() => SaveCoreAsync();
+
+    [RelayCommand]
+    private void ToggleSettingsMenu() => IsSettingsMenuOpen = !IsSettingsMenuOpen;
+
+    [RelayCommand]
+    private void CloseSettingsMenu() => IsSettingsMenuOpen = false;
 
     [RelayCommand]
     private void ShowConnectionTab() => SelectedTab = ConnectionTabKey;
@@ -263,10 +261,13 @@ public partial class MachineSettingsViewModel(
     private void DecrementNumericSetting(string settingName) => AdjustNumericSetting(settingName, -1);
 
     [RelayCommand]
-    private Task RunContinuousCleaning() => RunCleaningAsync(SanitationMode.Continuous, TimeSpan.FromSeconds(20), TimeSpan.Zero, TimeSpan.Zero);
+    private Task RunContinuousCleaning() => RunCleaningAsync(SanitationMode.Continuous, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
 
     [RelayCommand]
-    private Task RunPulsedCleaning() => RunCleaningAsync(SanitationMode.Pulsed, TimeSpan.FromSeconds(15), TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+    private Task RunPulsedCleaning() => RunCleaningAsync(SanitationMode.Pulsed, TimeSpan.Zero, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+
+    [RelayCommand]
+    private Task RunPriming() => RunPrimingAsync(0.200m);
 
     [RelayCommand]
     private void SelectConnectionMode(ConnectionModeOptionViewModel? option)
@@ -331,7 +332,6 @@ public partial class MachineSettingsViewModel(
 
         try
         {
-            _isSaving = true;
             await PersistConnectionPreferenceAsync();
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSending));
             var settings = _loadedSettings is null ? new MachineSettings() : CloneSettings(_loadedSettings);
@@ -386,7 +386,6 @@ public partial class MachineSettingsViewModel(
 
             NewAdminPasscode = string.Empty;
             ConfirmAdminPasscode = string.Empty;
-            _lastLocalEditUtc = DateTime.MinValue;
             SetStatus(appliedSettings is null
                 ? nameof(AppLanguageStrings.MobileSettingsStatusSaved)
                 : nameof(AppLanguageStrings.MobileSettingsStatusApplied));
@@ -394,10 +393,6 @@ public partial class MachineSettingsViewModel(
         catch
         {
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSaveError));
-        }
-        finally
-        {
-            _isSaving = false;
         }
     }
 
@@ -423,6 +418,33 @@ public partial class MachineSettingsViewModel(
 
             await RefreshFromRemoteAsync(updateStatus: false);
             SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSaved));
+        }
+        catch
+        {
+            SetStatus(nameof(AppLanguageStrings.MobileSettingsStatusSaveError));
+        }
+    }
+
+    private async Task RunPrimingAsync(decimal targetLiters)
+    {
+        if (_record is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await remoteClient.RunPrimingAsync(_record, new PrimingRequest
+            {
+                TargetLiters = targetLiters,
+                Timeout = TimeSpan.FromSeconds(30),
+            });
+            _record.RememberSuccessfulConnection(result.ApiBaseUrl, result.ConnectionMode);
+            await pairedMachineStore.AddOrUpdateAsync(_record);
+            RefreshConnectionSummary();
+
+            await RefreshFromRemoteAsync(updateStatus: false);
+            StatusMessage = string.Format(T(nameof(AppLanguageStrings.SettingsPrimingStatusFormat)), targetLiters * 1000m);
         }
         catch
         {
@@ -544,26 +566,6 @@ public partial class MachineSettingsViewModel(
         }
     }
 
-    private async Task RunRefreshLoopAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var timer = new PeriodicTimer(RemoteRefreshInterval);
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                if (_isSaving || DateTime.UtcNow - _lastLocalEditUtc < TimeSpan.FromSeconds(8))
-                {
-                    continue;
-                }
-
-                await MainThread.InvokeOnMainThreadAsync(() => RefreshFromRemoteAsync(updateStatus: false));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         StatusMessage = T(_statusMessageKey);
@@ -613,18 +615,14 @@ public partial class MachineSettingsViewModel(
                 .GetAttemptOrder(SelectedConnectionPreference, localAvailable)
                 .Select(GetConnectionModeTitle));
 
-        var activeMode = _record?.LastConnectionMode ?? MachineConnectionMode.Unknown;
-        if (activeMode == MachineConnectionMode.Unknown && _record is not null)
-        {
-            activeMode = ConnectionStrategyResolver.InferMode(_record, _record.ApiBaseUrl);
-        }
+        var activeMode = _record is null
+            ? MachineConnectionMode.Unknown
+            : ConnectionStrategyResolver.InferActiveMode(_record);
 
         ActiveConnectionModeTitle = GetConnectionModeTitle(activeMode);
-        ActiveConnectionEndpoint = !string.IsNullOrWhiteSpace(_record?.LastConnectionEndpoint)
-            ? _record!.LastConnectionEndpoint
-            : (!string.IsNullOrWhiteSpace(_record?.ApiBaseUrl)
-                ? _record.ApiBaseUrl
-                : T(nameof(AppLanguageStrings.MobileConnectionEndpointMissing)));
+        ActiveConnectionEndpoint = _record is null
+            ? T(nameof(AppLanguageStrings.MobileConnectionEndpointMissing))
+            : ConnectionStrategyResolver.GetDisplayEndpoint(_record);
     }
 
     private async Task PersistConnectionPreferenceAsync()

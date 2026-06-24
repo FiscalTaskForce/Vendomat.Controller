@@ -24,9 +24,6 @@
                                FontSize="28"
                                FontAttributes="Bold"
                                TextColor="{StaticResource MilkWhite}" />
-                        <Label Text="{localization:Translate DashboardSubtitle}"
-                               FontSize="14"
-                               TextColor="#E5EFF7" />
                     </VerticalStackLayout>
 
                     <Border Grid.Column="1"
@@ -134,18 +131,9 @@
 
         <Border Grid.Row="1"
                 Padding="20">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
                   RowSpacing="14">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="{localization:Translate DashboardStatusTitle}"
-                           FontSize="12"
-                           TextColor="{StaticResource MutedInk}" />
-                    <Label Text="{Binding StatusMessage}"
-                           FontSize="20"
-                           FontAttributes="Bold" />
-                </VerticalStackLayout>
-
-                <Grid Grid.Row="1"
+                <Grid
                       ColumnDefinitions="*,*"
                       ColumnSpacing="12">
                     <Border Padding="14"
@@ -179,7 +167,7 @@
                     </Border>
                 </Grid>
 
-                <Grid Grid.Row="2"
+                <Grid Grid.Row="1"
                       ColumnDefinitions="*,*"
                       ColumnSpacing="12">
                     <Border Padding="14">
@@ -205,9 +193,10 @@
                     </Border>
                 </Grid>
 
-                <Grid Grid.Row="3"
+                <Grid Grid.Row="2"
                       ColumnDefinitions="*,*"
-                      ColumnSpacing="12">
+                      ColumnSpacing="12"
+                      IsVisible="{Binding IsPaymentSelectorVisible}">
                     <Button Text="{localization:Translate DashboardPaymentCash}"
                             Command="{Binding SelectCashCommand}"
                             IsEnabled="{Binding CanUseCash}"
@@ -226,6 +215,7 @@
                             Text="{localization:Translate DashboardPaymentCard}"
                             Command="{Binding SelectCardCommand}"
                             IsEnabled="{Binding CanUseCard}"
+                            IsVisible="{Binding IsCardPaymentVisible}"
                             BackgroundColor="{StaticResource MilkWhite}"
                             TextColor="{StaticResource Ink}">
                         <Button.Triggers>
@@ -239,41 +229,47 @@
                     </Button>
                 </Grid>
 
-                <Grid Grid.Row="4"
+                <Grid Grid.Row="3"
                       ColumnDefinitions="Auto,*,Auto"
                       ColumnSpacing="12">
                     <Button Text="-"
-                            WidthRequest="52"
+                            WidthRequest="64"
+                            HeightRequest="84"
                             Command="{Binding DecreaseRequestedLitersCommand}"
                             IsEnabled="{Binding CanAdjustLiters}"
                             IsVisible="{Binding CanAdjustLiters}" />
                     <Border Grid.Column="1"
-                            Padding="14">
-                        <VerticalStackLayout Spacing="4"
+                            BackgroundColor="#F5FAF7"
+                            Stroke="{StaticResource CardBorder}"
+                            StrokeThickness="1"
+                            Padding="24,18"
+                            MinimumHeightRequest="148">
+                        <VerticalStackLayout Spacing="8"
                                              HorizontalOptions="Center">
-                            <Label Text="{localization:Translate DashboardRequestedLitersTitle}"
-                                   FontSize="12"
+                            <Label Text="{Binding RequestedLitersTitle}"
+                                   FontSize="14"
                                    TextColor="{StaticResource MutedInk}"
                                    HorizontalTextAlignment="Center" />
-                            <Label Text="{Binding RequestedLiters, StringFormat='{}{0:0.##} L'}"
-                                   FontSize="24"
+                            <Label Text="{Binding RequestedLitersDisplay, StringFormat='{}{0:0.##} L'}"
+                                   FontSize="38"
                                    FontAttributes="Bold"
                                    HorizontalTextAlignment="Center" />
                             <Label Text="{Binding SelectedTotalDisplay}"
-                                   FontSize="12"
+                                   FontSize="14"
                                    TextColor="{StaticResource MutedInk}"
                                    HorizontalTextAlignment="Center" />
                         </VerticalStackLayout>
                     </Border>
                     <Button Grid.Column="2"
                             Text="+"
-                            WidthRequest="52"
+                            WidthRequest="64"
+                            HeightRequest="84"
                             Command="{Binding IncreaseRequestedLitersCommand}"
                             IsEnabled="{Binding CanAdjustLiters}"
                             IsVisible="{Binding CanAdjustLiters}" />
                 </Grid>
 
-                <VerticalStackLayout Grid.Row="5"
+                <VerticalStackLayout Grid.Row="4"
                                      Spacing="12"
                                      VerticalOptions="End">
                     <Label Text="{Binding ContactDisplay}"
@@ -305,6 +301,66 @@
                 Pressed="OnAdminHotspotPressed"
                 Released="OnAdminHotspotReleased"
                 Clicked="OnAdminHotspotClicked" />
+
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsRemoteOperationOverlayVisible}"
+              BackgroundColor="#E60B1724"
+              InputTransparent="False"
+              Padding="28">
+            <Border Padding="36"
+                    BackgroundColor="#FFFDF8EF"
+                    Stroke="#D9CBB8"
+                    StrokeThickness="1"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="620">
+                <VerticalStackLayout Spacing="22"
+                                     HorizontalOptions="Center">
+                    <Border WidthRequest="150"
+                            HeightRequest="150"
+                            StrokeThickness="0"
+                            BackgroundColor="#EAF7EF"
+                            HorizontalOptions="Center">
+                        <Grid>
+                            <ActivityIndicator IsRunning="{Binding IsRemoteOperationOverlayVisible}"
+                                               IsVisible="{Binding IsRemoteOperationOverlayVisible}"
+                                               Color="{StaticResource FarmGreen}"
+                                               WidthRequest="112"
+                                               HeightRequest="112"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                            <Label Text="⚙"
+                                   FontSize="48"
+                                   HorizontalTextAlignment="Center"
+                                   VerticalTextAlignment="Center"
+                                   TextColor="{StaticResource FarmGreen}" />
+                        </Grid>
+                    </Border>
+
+                    <Label Text="{Binding RemoteOperationTitle}"
+                           FontSize="34"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource Ink}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{Binding RemoteOperationMessage}"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource FarmGreen}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{localization:Translate SettingsOperationPopupSubtitle}"
+                           FontSize="16"
+                           TextColor="{StaticResource MutedInk}"
+                           HorizontalTextAlignment="Center" />
+                    <Button Text="{localization:Translate DashboardStopCleaningButton}"
+                            Command="{Binding StopRemoteOperationCommand}"
+                            IsVisible="{Binding CanStopRemoteOperation}"
+                            HeightRequest="64"
+                            Padding="26,12"
+                            BackgroundColor="{StaticResource Danger}"
+                            TextColor="{StaticResource MilkWhite}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
         <Grid x:Name="AdminPromptOverlay"
               Grid.RowSpan="2"

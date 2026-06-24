@@ -45,9 +45,12 @@ namespace Vendomat.Common.BillValidator
                 Validator.CommandStructure.Timeout = 3000;
 
                 // connect to the validator
+                Connected = false;
+                ConnectionFail = false;
                 if (ConnectToValidator())
                 {
                     Running = true;
+                    Connected = true;
 
                 }
 
@@ -61,6 +64,7 @@ namespace Vendomat.Common.BillValidator
                         {
                             Running = false;
                             Connected = false;
+                            ConnectionFail = false;
                             await Task.Run(ConnectToValidatorThreaded);
 
                             while (!Connected)
@@ -73,6 +77,8 @@ namespace Vendomat.Common.BillValidator
                                 }
 
                             }
+
+                            Running = Connected;
 
                         }
                         else

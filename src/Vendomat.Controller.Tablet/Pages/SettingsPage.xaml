@@ -312,6 +312,28 @@
                                      Spacing="16">
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <VerticalStackLayout Spacing="16">
+                            <Label Text="{localization:Translate SettingsRuntimeSectionTitle}"
+                                   Style="{StaticResource SettingsCardTitleStyle}" />
+                            <Border Padding="14"
+                                    BackgroundColor="#FFF2DF"
+                                    StrokeThickness="0">
+                                <HorizontalStackLayout Spacing="10">
+                                    <Switch IsToggled="{Binding DemoModeEnabled}" />
+                                    <VerticalStackLayout Spacing="2"
+                                                         VerticalOptions="Center">
+                                        <Label Text="{localization:Translate SettingsRuntimeDemoMode}"
+                                               FontAttributes="Bold" />
+                                        <Label Text="{localization:Translate SettingsRuntimeDemoModeHint}"
+                                               FontSize="12"
+                                               TextColor="{StaticResource MutedInk}" />
+                                    </VerticalStackLayout>
+                                </HorizontalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <VerticalStackLayout Spacing="16">
                             <Label Text="{localization:Translate SettingsAdminSection}"
                                    Style="{StaticResource SettingsCardTitleStyle}" />
                             <Label Text="{localization:Translate SettingsAdminCardDescription}"
@@ -627,22 +649,6 @@
                                 </Border>
                             </Grid>
 
-                            <Border Padding="14"
-                                    BackgroundColor="#FFF2DF"
-                                    StrokeThickness="0">
-                                <HorizontalStackLayout Spacing="10">
-                                    <Switch IsToggled="{Binding DemoModeEnabled}" />
-                                    <VerticalStackLayout Spacing="2"
-                                                         VerticalOptions="Center">
-                                        <Label Text="{localization:Translate SettingsRuntimeDemoMode}"
-                                               FontAttributes="Bold" />
-                                        <Label Text="{localization:Translate SettingsRuntimeDemoModeHint}"
-                                               FontSize="12"
-                                               TextColor="{StaticResource MutedInk}" />
-                                    </VerticalStackLayout>
-                                </HorizontalStackLayout>
-                            </Border>
-
                             <Grid ColumnDefinitions="*,*"
                                   ColumnSpacing="12">
                                 <VerticalStackLayout Spacing="6">
@@ -800,6 +806,27 @@
                                     </VerticalStackLayout>
                                 </Border>
                             </Grid>
+
+                            <Border Padding="16"
+                                    BackgroundColor="#EAF7EF"
+                                    StrokeThickness="0">
+                                <VerticalStackLayout Spacing="12">
+                                    <Label Text="{localization:Translate SettingsPrimingTitle}"
+                                           FontAttributes="Bold"
+                                           FontSize="16" />
+                                    <Label Text="{localization:Translate SettingsPrimingDescription}"
+                                           Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                    <Grid ColumnDefinitions="*,*"
+                                          ColumnSpacing="12">
+                                        <Button Text="{localization:Translate SettingsPrime100Ml}"
+                                                Command="{Binding RunPriming100MlCommand}" />
+                                        <Button Grid.Column="1"
+                                                Text="{localization:Translate SettingsPrime200Ml}"
+                                                Command="{Binding RunPriming200MlCommand}"
+                                                BackgroundColor="#2F8F5B" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
                         </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>
@@ -809,9 +836,18 @@
         <Border Grid.Row="3"
                 Style="{StaticResource SettingsCardStyle}"
                 Padding="16">
-            <Button Text="{localization:Translate SettingsSaveButton}"
-                    Command="{Binding SaveSettingsCommand}"
-                    HeightRequest="58" />
+            <Grid ColumnDefinitions="*,Auto"
+                  ColumnSpacing="12">
+                <Button Text="{localization:Translate SettingsSaveButton}"
+                        Command="{Binding SaveSettingsCommand}"
+                        HeightRequest="58" />
+                <Button Grid.Column="1"
+                        Text="{localization:Translate SettingsExitAppButton}"
+                        Clicked="OnExitAppClicked"
+                        HeightRequest="58"
+                        Padding="24,0"
+                        BackgroundColor="{StaticResource AccentAmber}" />
+            </Grid>
         </Border>
 
         <Grid Grid.RowSpan="4"
@@ -857,6 +893,57 @@
                                WidthRequest="460"
                                HorizontalOptions="Center" />
                     </Border>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <Grid Grid.RowSpan="4"
+              IsVisible="{Binding IsOperationPopupVisible}"
+              BackgroundColor="#B20B1724"
+              InputTransparent="False">
+            <Border Style="{StaticResource SettingsCardStyle}"
+                    Padding="30"
+                    WidthRequest="430"
+                    MaximumWidthRequest="430"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center">
+                <VerticalStackLayout Spacing="18"
+                                     HorizontalOptions="Center">
+                    <Border WidthRequest="104"
+                            HeightRequest="104"
+                            StrokeThickness="0"
+                            BackgroundColor="#EAF7EF"
+                            HorizontalOptions="Center">
+                        <Grid>
+                            <ActivityIndicator IsRunning="{Binding IsOperationPopupVisible}"
+                                               IsVisible="{Binding IsOperationPopupVisible}"
+                                               Color="{StaticResource FarmGreen}"
+                                               WidthRequest="72"
+                                               HeightRequest="72"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                            <Label Text="⚙"
+                                   FontSize="30"
+                                   HorizontalTextAlignment="Center"
+                                   VerticalTextAlignment="Center"
+                                   TextColor="{StaticResource FarmGreen}" />
+                        </Grid>
+                    </Border>
+
+                    <Label Text="{Binding OperationPopupTitle}"
+                           FontSize="24"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource Ink}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{Binding OperationPopupMessage}"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource FarmGreen}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{localization:Translate SettingsOperationPopupSubtitle}"
+                           FontSize="14"
+                           TextColor="{StaticResource MutedInk}"
+                           HorizontalTextAlignment="Center" />
                 </VerticalStackLayout>
             </Border>
         </Grid>

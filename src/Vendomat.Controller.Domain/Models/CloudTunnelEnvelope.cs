@@ -19,6 +19,8 @@ public static class CloudTunnelActions
     public const string GetSettings = "get-settings";
     public const string SaveSettings = "save-settings";
     public const string RunSanitation = "run-sanitation";
+    public const string StopSanitation = "stop-sanitation";
+    public const string RunPriming = "run-priming";
     public const string AddCredit = "add-credit";
 }
 

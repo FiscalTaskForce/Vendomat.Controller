@@ -120,6 +120,15 @@ public partial class SettingsPageViewModel(
     private bool isPairingPopupVisible;
 
     [ObservableProperty]
+    private bool isOperationPopupVisible;
+
+    [ObservableProperty]
+    private string operationPopupTitle = string.Empty;
+
+    [ObservableProperty]
+    private string operationPopupMessage = string.Empty;
+
+    [ObservableProperty]
     private string statusMessage = string.Empty;
 
     [ObservableProperty]
@@ -218,7 +227,11 @@ public partial class SettingsPageViewModel(
         SetStatus(nameof(AppLanguageStrings.SettingsReadyStatus));
     }
 
-    public void Stop() => languageService.LanguageChanged -= OnLanguageChanged;
+    public void Stop()
+    {
+        IsOperationPopupVisible = false;
+        languageService.LanguageChanged -= OnLanguageChanged;
+    }
 
     partial void OnPairingQrImageChanged(ImageSource? value)
     {
@@ -438,34 +451,85 @@ public partial class SettingsPageViewModel(
     [RelayCommand]
     private async Task RunContinuousCleaning()
     {
-        await machineRuntimeService.RunSanitationAsync(new SanitationRequest
-        {
-            Mode = SanitationMode.Continuous,
-            Duration = TimeSpan.FromSeconds(20),
-            PulseOn = TimeSpan.Zero,
-            PulseOff = TimeSpan.Zero,
-        });
+        await RunWithOperationPopupAsync(
+            T(nameof(AppLanguageStrings.SettingsContinuousCleaning)),
+            async () =>
+            {
+                await machineRuntimeService.RunSanitationAsync(new SanitationRequest
+                {
+                    Mode = SanitationMode.Continuous,
+                    Duration = TimeSpan.Zero,
+                    PulseOn = TimeSpan.Zero,
+                    PulseOff = TimeSpan.Zero,
+                });
 
-        SetStatus(nameof(AppLanguageStrings.SettingsContinuousCleaningStatus));
+                SetStatus(nameof(AppLanguageStrings.SettingsContinuousCleaningStatus));
+            });
     }
 
     [RelayCommand]
     private async Task RunPulsedCleaning()
     {
-        await machineRuntimeService.RunSanitationAsync(new SanitationRequest
-        {
-            Mode = SanitationMode.Pulsed,
-            Duration = TimeSpan.FromSeconds(15),
-            PulseOn = TimeSpan.FromMilliseconds(500),
-            PulseOff = TimeSpan.FromMilliseconds(500),
-        });
+        await RunWithOperationPopupAsync(
+            T(nameof(AppLanguageStrings.SettingsPulsedCleaning)),
+            async () =>
+            {
+                await machineRuntimeService.RunSanitationAsync(new SanitationRequest
+                {
+                    Mode = SanitationMode.Pulsed,
+                    Duration = TimeSpan.Zero,
+                    PulseOn = TimeSpan.FromMilliseconds(500),
+                    PulseOff = TimeSpan.FromMilliseconds(500),
+                });
 
-        SetStatus(nameof(AppLanguageStrings.SettingsPulsedCleaningStatus));
+                SetStatus(nameof(AppLanguageStrings.SettingsPulsedCleaningStatus));
+            });
+    }
+
+    [RelayCommand]
+    private Task RunPriming100Ml() => RunPriming(0.100m);
+
+    [RelayCommand]
+    private Task RunPriming200Ml() => RunPriming(0.200m);
+
+    private async Task RunPriming(decimal targetLiters)
+    {
+        var operationName = $"{T(nameof(AppLanguageStrings.SettingsPrimingTitle))} - {targetLiters * 1000m:0} ml";
+        await RunWithOperationPopupAsync(
+            operationName,
+            async () =>
+            {
+                await machineRuntimeService.RunPrimingAsync(new PrimingRequest
+                {
+                    TargetLiters = targetLiters,
+                    Timeout = TimeSpan.FromSeconds(30),
+                });
+
+                StatusMessage = string.Format(T(nameof(AppLanguageStrings.SettingsPrimingStatusFormat)), targetLiters * 1000m);
+            });
+    }
+
+    private async Task RunWithOperationPopupAsync(string operationName, Func<Task> operation)
+    {
+        OperationPopupTitle = T(nameof(AppLanguageStrings.SettingsOperationPopupTitle));
+        OperationPopupMessage = operationName;
+        IsOperationPopupVisible = true;
+
+        try
+        {
+            await operation();
+        }
+        finally
+        {
+            IsOperationPopupVisible = false;
+            OperationPopupMessage = string.Empty;
+        }
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         StatusMessage = T(_statusMessageKey);
+        OperationPopupTitle = T(nameof(AppLanguageStrings.SettingsOperationPopupTitle));
         OnPropertyChanged(nameof(PairingCodeDisplay));
         OnPropertyChanged(nameof(PairingEndpointDisplay));
         OnPropertyChanged(nameof(ControlAppUpdateAvailabilityText));

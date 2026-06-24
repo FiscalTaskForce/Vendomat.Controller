@@ -16,7 +16,10 @@ public interface IMachineRuntimeService
     Task AddRemoteCreditAsync(decimal amount, CancellationToken cancellationToken = default);
     Task AddRemoteCreditAsync(RemoteCreditRequest request, CancellationToken cancellationToken = default);
     Task StartDispenseAsync(DispenseCommand command, CancellationToken cancellationToken = default);
+    Task StopDispenseAsync(CancellationToken cancellationToken = default);
+    Task RunPrimingAsync(PrimingRequest request, CancellationToken cancellationToken = default);
     Task RunSanitationAsync(SanitationRequest request, CancellationToken cancellationToken = default);
+    Task StopSanitationAsync(Guid? commandId = null, CancellationToken cancellationToken = default);
     Task UpdateEsp32FirmwareAsync(Esp32FirmwareUpdateRequest request, CancellationToken cancellationToken = default);
     Task<PairingQrPayload> GeneratePairingAsync(CancellationToken cancellationToken = default);
     Task<PairingClaimResult> ClaimPairingAsync(PairingClaimRequest request, CancellationToken cancellationToken = default);

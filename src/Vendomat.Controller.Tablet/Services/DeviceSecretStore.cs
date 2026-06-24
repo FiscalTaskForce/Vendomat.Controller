@@ -7,6 +7,24 @@ public sealed class DeviceSecretStore
 {
     private const string ProtectedPrefix = "enc-v1:";
     private const string KeyStorageName = "vendomat.tablet.device-secrets.aes-key";
+    private const string LocalApiCertPasswordName = "vendomat.tablet.local-api-cert.pfx-password";
+
+    /// <summary>
+    /// Returns a stable, device-specific password used to protect the local API certificate
+    /// PFX at rest. Backed by the platform secure storage (Android Keystore).
+    /// </summary>
+    public async Task<string> GetOrCreateLocalApiCertificatePasswordAsync()
+    {
+        var stored = await SecureStorage.Default.GetAsync(LocalApiCertPasswordName);
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            return stored;
+        }
+
+        var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
+        await SecureStorage.Default.SetAsync(LocalApiCertPasswordName, password);
+        return password;
+    }
 
     public bool IsProtected(string? value) =>
         !string.IsNullOrWhiteSpace(value)

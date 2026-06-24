@@ -11,13 +11,13 @@
 
     <ContentPage.Resources>
         <Style x:Key="SettingsCardStyle" TargetType="Border">
-            <Setter Property="Padding" Value="18" />
-            <Setter Property="Stroke" Value="#E7DDCF" />
+            <Setter Property="Padding" Value="20" />
+            <Setter Property="Stroke" Value="{StaticResource StrokeSoft}" />
             <Setter Property="StrokeThickness" Value="1" />
-            <Setter Property="BackgroundColor" Value="#FFFDF9" />
+            <Setter Property="BackgroundColor" Value="{StaticResource CardBackground}" />
             <Setter Property="StrokeShape">
                 <Setter.Value>
-                    <RoundRectangle CornerRadius="22" />
+                    <RoundRectangle CornerRadius="26" />
                 </Setter.Value>
             </Setter>
         </Style>
@@ -25,164 +25,95 @@
         <Style x:Key="SettingsCardTitleStyle" TargetType="Label">
             <Setter Property="FontSize" Value="20" />
             <Setter Property="FontAttributes" Value="Bold" />
-            <Setter Property="TextColor" Value="#17242E" />
+            <Setter Property="TextColor" Value="{StaticResource MidnightBlue}" />
         </Style>
 
         <Style x:Key="SettingsCardDescriptionStyle" TargetType="Label">
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="TextColor" Value="#6E6E6E" />
+            <Setter Property="TextColor" Value="{StaticResource Gray500}" />
         </Style>
 
         <Style x:Key="SettingsFieldLabelStyle" TargetType="Label">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontAttributes" Value="Bold" />
-            <Setter Property="TextColor" Value="#6E6E6E" />
+            <Setter Property="TextColor" Value="{StaticResource Gray500}" />
         </Style>
 
         <Style x:Key="SettingsEntryStyle" TargetType="Entry">
-            <Setter Property="BackgroundColor" Value="#EEF6FB" />
+            <Setter Property="BackgroundColor" Value="{StaticResource InfoSurface}" />
             <Setter Property="MinimumHeightRequest" Value="52" />
             <Setter Property="ClearButtonVisibility" Value="WhileEditing" />
         </Style>
 
         <Style x:Key="SettingsTabButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="18,12" />
-            <Setter Property="HeightRequest" Value="48" />
-            <Setter Property="CornerRadius" Value="24" />
+            <Setter Property="Padding" Value="20,12" />
+            <Setter Property="HeightRequest" Value="50" />
+            <Setter Property="CornerRadius" Value="25" />
             <Setter Property="FontAttributes" Value="Bold" />
-            <Setter Property="BackgroundColor" Value="#EEF6FB" />
-            <Setter Property="TextColor" Value="#17242E" />
+            <Setter Property="BackgroundColor" Value="{StaticResource PanelBackground}" />
+            <Setter Property="TextColor" Value="{StaticResource MidnightBlue}" />
+            <Setter Property="BorderColor" Value="{StaticResource StrokeSoft}" />
+            <Setter Property="BorderWidth" Value="1" />
+        </Style>
+
+        <Style x:Key="SettingsDrawerButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="HeightRequest" Value="52" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="HorizontalOptions" Value="Fill" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="BackgroundColor" Value="{StaticResource PanelBackground}" />
+            <Setter Property="TextColor" Value="{StaticResource MidnightBlue}" />
+            <Setter Property="BorderColor" Value="{StaticResource StrokeSoft}" />
+            <Setter Property="BorderWidth" Value="1" />
         </Style>
 
         <Style x:Key="SettingsAdjustButtonStyle" TargetType="Button">
             <Setter Property="WidthRequest" Value="56" />
             <Setter Property="HeightRequest" Value="52" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="16" />
             <Setter Property="FontSize" Value="24" />
             <Setter Property="FontAttributes" Value="Bold" />
             <Setter Property="Padding" Value="0" />
         </Style>
     </ContentPage.Resources>
 
-    <Grid Padding="16"
-          RowDefinitions="Auto,Auto,*,Auto"
-          RowSpacing="16">
+    <Grid Padding="20,18,20,24"
+          RowDefinitions="Auto,*,Auto"
+          RowSpacing="18">
 
-        <Grid ColumnDefinitions="Auto,*"
-              ColumnSpacing="14">
-            <Button Text="{localization:Translate CommonBack}"
-                    Padding="14,10"
-                    Clicked="OnBackClicked" />
-            <VerticalStackLayout Grid.Column="1"
-                                 Spacing="2"
-                                 VerticalOptions="Center">
-                <Label Text="{localization:Translate MobileSettingsTitle}"
-                       FontSize="28"
-                       FontAttributes="Bold" />
-                <Label Text="{Binding StatusMessage}"
-                       FontSize="12"
-                       TextColor="#6E6E6E" />
-            </VerticalStackLayout>
-        </Grid>
-
-        <ScrollView Grid.Row="1"
-                    Orientation="Horizontal"
-                    HorizontalScrollBarVisibility="Never">
-            <HorizontalStackLayout Spacing="10">
-                <Button Text="{localization:Translate MobileConnectionSectionTitle}"
-                        Command="{Binding ShowConnectionTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsConnectionTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
+        <Border Padding="20"
+                BackgroundColor="{StaticResource Primary}"
+                StrokeThickness="0">
+            <Grid ColumnDefinitions="Auto,*"
+                  ColumnSpacing="14">
+                <Button Text=""
+                        Padding="14,10"
+                        WidthRequest="50"
+                        Command="{Binding ToggleSettingsMenuCommand}"
+                        Style="{StaticResource GhostButtonStyle}">
+                    <Button.ImageSource>
+                        <FontImageSource Glyph="&#x2630;"
+                                         FontFamily="OpenSansSemibold"
+                                         Size="18"
+                                         Color="White" />
+                    </Button.ImageSource>
                 </Button>
+                <VerticalStackLayout Grid.Column="1"
+                                     Spacing="6"
+                                     VerticalOptions="Center">
+                    <Label Text="{localization:Translate MobileSettingsTitle}"
+                           Style="{StaticResource PageTitleLabelStyle}"
+                           TextColor="White"
+                           FontSize="26" />
+                    <Label Text="{Binding StatusMessage}"
+                           Style="{StaticResource PageSubtitleLabelStyle}"
+                           TextColor="#E1F3E9" />
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
 
-                <Button Text="{localization:Translate SettingsSalesTab}"
-                        Command="{Binding ShowSalesTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsSalesTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-
-                <Button Text="{localization:Translate SettingsGeneralSection}"
-                        Command="{Binding ShowGeneralTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsGeneralTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-
-                <Button Text="{localization:Translate SettingsPaymentSection}"
-                        Command="{Binding ShowPaymentsTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsPaymentsTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-
-                <Button Text="{localization:Translate SettingsValidatorSection}"
-                        Command="{Binding ShowValidatorTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsValidatorTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-
-                <Button Text="{localization:Translate SettingsEsp32Section}"
-                        Command="{Binding ShowEsp32TabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsEsp32TabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-
-                <Button Text="{localization:Translate SettingsCleaningSection}"
-                        Command="{Binding ShowCleaningTabCommand}"
-                        Style="{StaticResource SettingsTabButtonStyle}">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button"
-                                     Binding="{Binding IsCleaningTabSelected}"
-                                     Value="True">
-                            <Setter Property="BackgroundColor" Value="#1C6B4A" />
-                            <Setter Property="TextColor" Value="White" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-            </HorizontalStackLayout>
-        </ScrollView>
-
-        <ScrollView Grid.Row="2">
+        <ScrollView Grid.Row="1">
             <VerticalStackLayout Padding="0,0,0,12"
                                  Spacing="16">
 
@@ -720,8 +651,7 @@
                             <Label Text="{localization:Translate SettingsCleaningCardDescription}"
                                    Style="{StaticResource SettingsCardDescriptionStyle}" />
 
-                            <Grid ColumnDefinitions="*,*"
-                                  ColumnSpacing="12">
+                            <VerticalStackLayout Spacing="12">
                                 <Border Padding="16"
                                         BackgroundColor="#EEF6FB"
                                         StrokeThickness="0">
@@ -736,8 +666,7 @@
                                     </VerticalStackLayout>
                                 </Border>
 
-                                <Border Grid.Column="1"
-                                        Padding="16"
+                                <Border Padding="16"
                                         BackgroundColor="#FFF2DF"
                                         StrokeThickness="0">
                                     <VerticalStackLayout Spacing="12">
@@ -751,20 +680,171 @@
                                                 BackgroundColor="#F3B255" />
                                     </VerticalStackLayout>
                                 </Border>
-                            </Grid>
+                            </VerticalStackLayout>
+
+                            <Border Padding="16"
+                                    BackgroundColor="#EAF7EF"
+                                    StrokeThickness="0">
+                                <VerticalStackLayout Spacing="12">
+                                    <Label Text="{localization:Translate SettingsPrimingTitle}"
+                                           FontAttributes="Bold"
+                                           FontSize="16" />
+                                    <Label Text="{localization:Translate SettingsPrimingDescription}"
+                                           Style="{StaticResource SettingsCardDescriptionStyle}" />
+                                    <Button Text="{localization:Translate SettingsPrime200Ml}"
+                                            Command="{Binding RunPrimingCommand}"
+                                            BackgroundColor="#2F8F5B" />
+                                </VerticalStackLayout>
+                            </Border>
                         </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="2"
                 Style="{StaticResource SettingsCardStyle}"
-                Padding="16">
+                Padding="14"
+                BackgroundColor="{StaticResource White}">
             <Button Text="{localization:Translate SettingsSaveButton}"
                     Command="{Binding SaveCommand}"
                     HeightRequest="58" />
         </Border>
+
+        <Grid Grid.RowSpan="3"
+              IsVisible="{Binding IsSettingsMenuOpen}"
+              BackgroundColor="#99000000">
+            <BoxView BackgroundColor="Transparent">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseSettingsMenuCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <Border WidthRequest="312"
+                    Padding="18"
+                    BackgroundColor="{StaticResource White}"
+                    StrokeThickness="0"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Fill">
+                <Grid RowDefinitions="Auto,*,Auto"
+                      RowSpacing="18">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{localization:Translate MobileSettingsMenuTitle}"
+                               Style="{StaticResource SettingsCardTitleStyle}" />
+                        <Label Text="{Binding StatusMessage}"
+                               Style="{StaticResource SettingsCardDescriptionStyle}" />
+                    </VerticalStackLayout>
+
+                    <ScrollView Grid.Row="1">
+                        <VerticalStackLayout Spacing="10">
+                            <Button Text="{localization:Translate MobileConnectionSectionTitle}"
+                                    Command="{Binding ShowConnectionTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsConnectionTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsSalesTab}"
+                                    Command="{Binding ShowSalesTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsSalesTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsGeneralSection}"
+                                    Command="{Binding ShowGeneralTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsGeneralTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsPaymentSection}"
+                                    Command="{Binding ShowPaymentsTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsPaymentsTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsValidatorSection}"
+                                    Command="{Binding ShowValidatorTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsValidatorTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsEsp32Section}"
+                                    Command="{Binding ShowEsp32TabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsEsp32TabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+
+                            <Button Text="{localization:Translate SettingsCleaningSection}"
+                                    Command="{Binding ShowCleaningTabCommand}"
+                                    Style="{StaticResource SettingsDrawerButtonStyle}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button"
+                                                 Binding="{Binding IsCleaningTabSelected}"
+                                                 Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="TextColor" Value="White" />
+                                        <Setter Property="BorderWidth" Value="0" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+                        </VerticalStackLayout>
+                    </ScrollView>
+
+                    <Button Grid.Row="2"
+                            Text="{localization:Translate MobileSettingsExitSettings}"
+                            Clicked="OnBackClicked"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            HeightRequest="52" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 
 </ContentPage>

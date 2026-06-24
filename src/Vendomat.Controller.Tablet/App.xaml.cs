@@ -46,6 +46,20 @@ public partial class App : Microsoft.Maui.Controls.Application
             {
                 try
                 {
+                    Log.Info(StartupTag, "Starting machine runtime");
+                    await ServiceRegistry.GetRequiredService<IMachineRuntimeService>().GetStatusAsync();
+                    Log.Info(StartupTag, "Machine runtime started");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(StartupTag, $"Machine runtime startup failed: {ex}");
+                }
+            });
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
                     Log.Info(StartupTag, "Starting local API host");
                     await ServiceRegistry.GetRequiredService<ILocalApiHost>().StartAsync();
                     Log.Info(StartupTag, "Local API host started");

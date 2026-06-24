@@ -175,6 +175,33 @@ public sealed class LocalApiHostService(
                     status = "accepted",
                 });
             }))
+            .WithModule(new ActionModule("/api/device/sanitation/stop", HttpVerbs.Post, async context =>
+            {
+                if (!await RequireCompanionAccessAsync(context, cancellationToken))
+                {
+                    return;
+                }
+
+                await machineRuntimeService.StopSanitationAsync(cancellationToken: cancellationToken);
+                await context.SendDataAsync(new
+                {
+                    status = "accepted",
+                });
+            }))
+            .WithModule(new ActionModule("/api/device/priming", HttpVerbs.Post, async context =>
+            {
+                if (!await RequireCompanionAccessAsync(context, cancellationToken))
+                {
+                    return;
+                }
+
+                var request = await ReadJsonAsync<PrimingRequest>(context, cancellationToken);
+                await machineRuntimeService.RunPrimingAsync(request, cancellationToken);
+                await context.SendDataAsync(new
+                {
+                    status = "accepted",
+                });
+            }))
             .WithModule(new ActionModule("/api/device/esp32/update", HttpVerbs.Post, async context =>
             {
                 if (!await RequireCompanionAccessAsync(context, cancellationToken))

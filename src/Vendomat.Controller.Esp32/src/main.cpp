@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <DHTesp.h>
+#include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <Update.h>
 #include <WiFi.h>
 #include <math.h>
+#include <mbedtls/sha256.h>
 #include <string.h>
 
 #include "FirmwareConfig.h"
@@ -49,6 +52,7 @@ struct CommandMessage
     char wifiSsid[FirmwareConfig::WifiSsidBufferSize] = {};
     char wifiPassword[FirmwareConfig::WifiPasswordBufferSize] = {};
     char expectedMd5[FirmwareConfig::ExpectedMd5BufferSize] = {};
+    char expectedSha256[FirmwareConfig::ExpectedSha256BufferSize] = {};
 };
 
 struct DispenseState
@@ -99,6 +103,24 @@ uint32_t readFlowPulseCount()
     return pulseCount;
 }
 
+void writeFlowPulseConsole()
+{
+    static bool hasWritten = false;
+    static uint32_t lastWrittenPulseCount = 0;
+
+    const uint32_t pulseCount = readFlowPulseCount();
+    if (hasWritten && pulseCount == lastWrittenPulseCount)
+    {
+        return;
+    }
+
+    Serial.printf("g_totalFlowPulses=%lu FlowPinLevel=%d\n",
+        static_cast<unsigned long>(pulseCount),
+        digitalRead(FirmwareConfig::FlowPulsePin));
+    lastWrittenPulseCount = pulseCount;
+    hasWritten = true;
+}
+
 uint32_t atLeast(uint32_t value, uint32_t minimumValue)
 {
     return value < minimumValue ? minimumValue : value;
@@ -140,6 +162,15 @@ void setPumpRelay(bool enabled)
     digitalWrite(FirmwareConfig::PumpRelayPin, relayLevel);
 }
 
+void initializePumpRelay()
+{
+    const auto inactiveRelayLevel = FirmwareConfig::PumpRelayActiveHigh ? LOW : HIGH;
+
+    digitalWrite(FirmwareConfig::PumpRelayPin, inactiveRelayLevel);
+    pinMode(FirmwareConfig::PumpRelayPin, OUTPUT);
+    digitalWrite(FirmwareConfig::PumpRelayPin, inactiveRelayLevel);
+}
+
 template <typename TDocument>
 void sendJson(const TDocument& document)
 {
@@ -167,10 +198,15 @@ void sendAck(const char* action, const char* status, const char* messageId = nul
 
 void sendSensorSnapshot(float temperature, float humidity)
 {
-    StaticJsonDocument<192> payload;
+    const uint32_t totalFlowPulses = readFlowPulseCount();
+
+    StaticJsonDocument<256> payload;
     payload["Type"] = MessageTypeSensorSnapshot;
     payload["Temperature"] = temperature;
     payload["Humidity"] = humidity;
+    payload["TotalFlowPulses"] = totalFlowPulses;
+    payload["g_totalFlowPulses"] = totalFlowPulses;
+    payload["FlowPinLevel"] = digitalRead(FirmwareConfig::FlowPulsePin);
     sendJson(payload);
 }
 
@@ -341,10 +377,17 @@ bool tryParseCommand(const char* line, CommandMessage& command, const char*& err
             copyJsonString(request["WifiSsid"], command.wifiSsid, sizeof(command.wifiSsid));
             copyJsonString(request["WifiPassword"], command.wifiPassword, sizeof(command.wifiPassword));
             copyJsonString(request["ExpectedMd5"], command.expectedMd5, sizeof(command.expectedMd5));
+            copyJsonString(request["ExpectedSha256"], command.expectedSha256, sizeof(command.expectedSha256));
 
             if (isEmptyText(command.firmwareUrl))
             {
                 errorStatus = "InvalidUrl";
+                return false;
+            }
+
+            if (isEmptyText(command.expectedSha256))
+            {
+                errorStatus = "MissingSha256";
                 return false;
             }
 
@@ -513,32 +556,110 @@ void startFirmwareUpdate(const CommandMessage& command)
 
     sendAck("FirmwareUpdate", "Downloading", hasMessageId(command) ? command.messageId : nullptr);
 
+    const char* messageId = hasMessageId(command) ? command.messageId : nullptr;
+
     WiFiClient client;
-    HTTPUpdate httpUpdate;
-    httpUpdate.rebootOnUpdate(false);
-
-    if (!isEmptyText(command.expectedMd5))
+    HTTPClient http;
+    if (!http.begin(client, command.firmwareUrl))
     {
-        httpUpdate.setMD5(command.expectedMd5);
+        sendAck("FirmwareUpdate", "BeginFailed", messageId);
+        return;
     }
 
-    const t_httpUpdate_return result = httpUpdate.update(client, command.firmwareUrl);
-    switch (result)
+    const int httpCode = http.GET();
+    if (httpCode != HTTP_CODE_OK)
     {
-        case HTTP_UPDATE_FAILED:
-            sendAck("FirmwareUpdate", "Failed", hasMessageId(command) ? command.messageId : nullptr);
-            return;
-
-        case HTTP_UPDATE_NO_UPDATES:
-            sendAck("FirmwareUpdate", "NoUpdates", hasMessageId(command) ? command.messageId : nullptr);
-            return;
-
-        case HTTP_UPDATE_OK:
-            sendAck("FirmwareUpdate", "Rebooting", hasMessageId(command) ? command.messageId : nullptr);
-            delay(200);
-            ESP.restart();
-            return;
+        http.end();
+        sendAck("FirmwareUpdate", "HttpError", messageId);
+        return;
     }
+
+    const int contentLength = http.getSize();
+    if (contentLength <= 0)
+    {
+        http.end();
+        sendAck("FirmwareUpdate", "NoContentLength", messageId);
+        return;
+    }
+
+    if (!Update.begin(static_cast<size_t>(contentLength)))
+    {
+        http.end();
+        sendAck("FirmwareUpdate", "NotEnoughSpace", messageId);
+        return;
+    }
+
+    // Hash the firmware while streaming it so we never commit a tampered image.
+    mbedtls_sha256_context sha256;
+    mbedtls_sha256_init(&sha256);
+    mbedtls_sha256_starts(&sha256, /*is224=*/0);
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buffer[512];
+    int remaining = contentLength;
+    bool transferOk = true;
+
+    while (http.connected() && remaining > 0)
+    {
+        const size_t available = stream->available();
+        if (available == 0)
+        {
+            delay(1);
+            continue;
+        }
+
+        const size_t toRead = available > sizeof(buffer) ? sizeof(buffer) : available;
+        const int read = stream->readBytes(buffer, toRead);
+        if (read <= 0)
+        {
+            transferOk = false;
+            break;
+        }
+
+        if (Update.write(buffer, read) != static_cast<size_t>(read))
+        {
+            transferOk = false;
+            break;
+        }
+
+        mbedtls_sha256_update(&sha256, buffer, read);
+        remaining -= read;
+    }
+
+    uint8_t digest[32] = {};
+    mbedtls_sha256_finish(&sha256, digest);
+    mbedtls_sha256_free(&sha256);
+    http.end();
+
+    if (!transferOk || remaining != 0)
+    {
+        Update.abort();
+        sendAck("FirmwareUpdate", "DownloadIncomplete", messageId);
+        return;
+    }
+
+    char computedSha256[65] = {};
+    for (size_t i = 0; i < sizeof(digest); ++i)
+    {
+        snprintf(computedSha256 + (i * 2), 3, "%02x", digest[i]);
+    }
+
+    if (strcasecmp(computedSha256, command.expectedSha256) != 0)
+    {
+        Update.abort();
+        sendAck("FirmwareUpdate", "Sha256Mismatch", messageId);
+        return;
+    }
+
+    if (!Update.end(true) || !Update.isFinished())
+    {
+        sendAck("FirmwareUpdate", "FinalizeFailed", messageId);
+        return;
+    }
+
+    sendAck("FirmwareUpdate", "Rebooting", messageId);
+    delay(200);
+    ESP.restart();
 }
 
 void processCommandQueue()
@@ -676,11 +797,10 @@ void setup()
     Serial2.begin(FirmwareConfig::TabletBaudRate, SERIAL_8N1, RXD2, TXD2);
     delay(200);
 
-    pinMode(FirmwareConfig::PumpRelayPin, OUTPUT);
-    setPumpRelay(false);
+    initializePumpRelay();
 
     pinMode(FirmwareConfig::FlowPulsePin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(FirmwareConfig::FlowPulsePin), onFlowPulse, RISING);
+    attachInterrupt(digitalPinToInterrupt(FirmwareConfig::FlowPulsePin), onFlowPulse, FALLING);
 
     g_dhtSensor.setup(FirmwareConfig::DhtPin, DHTesp::DHT22);
     g_commandQueue = xQueueCreate(FirmwareConfig::CommandQueueLength, sizeof(CommandMessage));
@@ -695,6 +815,7 @@ void loop()
     processCommandQueue();
     updateDispense();
     updateSanitation();
+    writeFlowPulseConsole();
     sampleSensors();
     delay(1);
 }

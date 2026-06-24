@@ -7,4 +7,5 @@ public enum MachineActivityState
     Dispensing = 2,
     Cleaning = 3,
     OutOfService = 4,
+    Priming = 5,
 }

@@ -11,6 +11,7 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
 {
     private ManualPairingLaunchRequest? _pendingManualRequest;
     private CameraBarcodeReaderView? _barcodeReader;
+    private bool _isHandlingBarcode;
 
     private QrScannerViewModel ViewModel => (QrScannerViewModel)BindingContext;
 
@@ -42,6 +43,7 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
     {
         base.OnAppearing();
         ViewModel.Reset();
+        RecreateScannerView();
 
         if (_pendingManualRequest is not null)
         {
@@ -54,18 +56,14 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
             }
         }
 
-        if (DeviceInfo.DeviceType == DeviceType.Virtual)
-        {
-            ScannerUnavailableLabel.IsVisible = true;
-            return;
-        }
-
+        await Task.Delay(250);
         await StartScannerAsync(requestPermission: true);
     }
 
     protected override void OnDisappearing()
     {
         StopScanner();
+        DestroyScannerView();
         base.OnDisappearing();
     }
 
@@ -81,18 +79,31 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
 
     private async void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
     {
+        if (_isHandlingBarcode)
+        {
+            return;
+        }
+
         var value = e.Results.FirstOrDefault()?.Value;
         if (string.IsNullOrWhiteSpace(value))
         {
             return;
         }
 
-        StopScanner();
-        var paired = await MainThread.InvokeOnMainThreadAsync(() => ViewModel.HandleScanAsync(value));
-        if (paired)
+        _isHandlingBarcode = true;
+        try
         {
-            await Shell.Current.GoToAsync("//devices");
-            return;
+            var paired = await MainThread.InvokeOnMainThreadAsync(() => ViewModel.HandleScanAsync(value));
+            if (paired)
+            {
+                StopScanner();
+                await Shell.Current.GoToAsync("//devices");
+                return;
+            }
+        }
+        finally
+        {
+            _isHandlingBarcode = false;
         }
 
         await StartScannerAsync(requestPermission: false);
@@ -114,17 +125,21 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
         return rawValue?.ToString()?.Trim() ?? string.Empty;
     }
 
-    private bool EnsureScannerCreated()
+    private void StopScanner()
     {
         if (_barcodeReader is not null)
         {
-            return true;
+            _barcodeReader.IsDetecting = false;
         }
+    }
+
+    private void RecreateScannerView()
+    {
+        DestroyScannerView();
 
         _barcodeReader = new CameraBarcodeReaderView
         {
-            Margin = new Thickness(10),
-            HeightRequest = 360,
+            CameraLocation = CameraLocation.Rear,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
             IsDetecting = false,
@@ -135,29 +150,25 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
                 Multiple = false,
             },
         };
-
         _barcodeReader.BarcodesDetected += OnBarcodesDetected;
-        ScannerHost.Children.Clear();
-        ScannerHost.Children.Add(_barcodeReader);
-        ScannerUnavailableLabel.IsVisible = false;
-        return true;
+        CameraHost.Children.Add(_barcodeReader);
     }
 
-    private void StopScanner()
+    private void DestroyScannerView()
     {
-        if (_barcodeReader is not null)
-        {
-            _barcodeReader.IsDetecting = false;
-        }
-    }
-
-    private async Task StartScannerAsync(bool requestPermission)
-    {
-        if (!EnsureScannerCreated())
+        if (_barcodeReader is null)
         {
             return;
         }
 
+        _barcodeReader.BarcodesDetected -= OnBarcodesDetected;
+        _barcodeReader.IsDetecting = false;
+        CameraHost.Children.Remove(_barcodeReader);
+        _barcodeReader = null;
+    }
+
+    private async Task StartScannerAsync(bool requestPermission)
+    {
         var permission = requestPermission
             ? await Permissions.RequestAsync<Permissions.Camera>()
             : await Permissions.CheckStatusAsync<Permissions.Camera>();
@@ -165,6 +176,11 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
         if (permission == PermissionStatus.Granted)
         {
             ScannerUnavailableLabel.IsVisible = false;
+            if (_barcodeReader is null)
+            {
+                RecreateScannerView();
+            }
+
             _barcodeReader!.IsDetecting = true;
             return;
         }

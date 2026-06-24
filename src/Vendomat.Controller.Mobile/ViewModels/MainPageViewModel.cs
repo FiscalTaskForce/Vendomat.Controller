@@ -12,6 +12,8 @@ public partial class MainPageViewModel(
     VendomatRemoteClient remoteClient,
     LanguageService languageService) : ObservableObject
 {
+    private bool _isRefreshRunning;
+
     [ObservableProperty]
     private ObservableCollection<DeviceCardViewModel> devices = [];
 
@@ -107,14 +109,23 @@ public partial class MainPageViewModel(
     }
 
     [RelayCommand]
-    private async Task Refresh()
+    private Task Refresh() => RefreshAsync(showIndicator: true);
+
+    public Task RefreshSilentlyAsync() => RefreshAsync(showIndicator: false);
+
+    private async Task RefreshAsync(bool showIndicator)
     {
-        if (IsRefreshing)
+        if (_isRefreshRunning)
         {
+            IsRefreshing = false;
             return;
         }
 
-        IsRefreshing = true;
+        _isRefreshRunning = true;
+        if (showIndicator)
+        {
+            IsRefreshing = true;
+        }
 
         try
         {
@@ -148,6 +159,7 @@ public partial class MainPageViewModel(
         }
         finally
         {
+            _isRefreshRunning = false;
             IsRefreshing = false;
         }
     }

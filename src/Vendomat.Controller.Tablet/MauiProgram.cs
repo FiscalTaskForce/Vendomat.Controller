@@ -41,6 +41,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<RemoteCommandJournal>();
         builder.Services.AddSingleton<OperationalBackupService>();
         builder.Services.AddSingleton<LanguageService>();
+        builder.Services.AddSingleton<Vendomat.Controller.Domain.Security.AdminPasscodeRateLimiter>();
         builder.Services.AddSingleton<IMachineSettingsRepository, SqliteMachineSettingsRepository>();
         builder.Services.AddSingleton<ISalesRepository, SqliteSalesRepository>();
         builder.Services.AddSingleton<ILogRepository, SqliteLogRepository>();

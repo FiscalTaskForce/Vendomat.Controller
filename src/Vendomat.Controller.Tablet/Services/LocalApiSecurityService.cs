@@ -1,12 +1,11 @@
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Android.Util;
 
 namespace Vendomat.Controller.Tablet.Services;
 
-public sealed class LocalApiSecurityService
+public sealed class LocalApiSecurityService(DeviceSecretStore deviceSecretStore)
 {
     private const string StartupTag = "VendomatStartup";
     private const int HttpPort = 1326;
@@ -31,12 +30,13 @@ public sealed class LocalApiSecurityService
                 return _cachedCertificate;
             }
 
+            var certificatePassword = await deviceSecretStore.GetOrCreateLocalApiCertificatePasswordAsync();
+
             if (File.Exists(CertificatePath))
             {
-                _cachedCertificate = new X509Certificate2(
+                _cachedCertificate = LoadExistingCertificate(
                     await File.ReadAllBytesAsync(CertificatePath, cancellationToken),
-                    string.Empty,
-                    X509KeyStorageFlags.Exportable);
+                    certificatePassword);
                 return _cachedCertificate;
             }
 
@@ -57,7 +57,7 @@ public sealed class LocalApiSecurityService
             sanBuilder.AddDnsName("localhost");
             sanBuilder.AddIpAddress(IPAddress.Loopback);
             sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
-            foreach (var address in GetLocalIpAddresses())
+            foreach (var address in LanAddressResolver.GetLocalIpAddresses())
             {
                 sanBuilder.AddIpAddress(address);
             }
@@ -69,12 +69,12 @@ public sealed class LocalApiSecurityService
                 DateTimeOffset.UtcNow.AddYears(5));
 
             Directory.CreateDirectory(Path.GetDirectoryName(CertificatePath)!);
-            var exportBytes = rawCertificate.Export(X509ContentType.Pfx, string.Empty);
+            var exportBytes = rawCertificate.Export(X509ContentType.Pfx, certificatePassword);
             await File.WriteAllBytesAsync(CertificatePath, exportBytes, cancellationToken);
 
             _cachedCertificate = new X509Certificate2(
                 exportBytes,
-                string.Empty,
+                certificatePassword,
                 X509KeyStorageFlags.Exportable);
             Log.Info(StartupTag, $"Generated local API certificate {_cachedCertificate.Thumbprint}");
             return _cachedCertificate;
@@ -82,6 +82,31 @@ public sealed class LocalApiSecurityService
         finally
         {
             _certificateLock.Release();
+        }
+    }
+
+    private X509Certificate2 LoadExistingCertificate(byte[] pfxBytes, string certificatePassword)
+    {
+        try
+        {
+            return new X509Certificate2(pfxBytes, certificatePassword, X509KeyStorageFlags.Exportable);
+        }
+        catch (CryptographicException)
+        {
+            // Migrate a legacy PFX that was stored without a password, preserving the same
+            // certificate/key (and therefore the pinned thumbprint) under the new password.
+            var legacyCertificate = new X509Certificate2(pfxBytes, string.Empty, X509KeyStorageFlags.Exportable);
+            try
+            {
+                var reExported = legacyCertificate.Export(X509ContentType.Pfx, certificatePassword);
+                File.WriteAllBytes(CertificatePath, reExported);
+                Log.Info(StartupTag, $"Re-protected local API certificate {legacyCertificate.Thumbprint}");
+                return new X509Certificate2(reExported, certificatePassword, X509KeyStorageFlags.Exportable);
+            }
+            finally
+            {
+                legacyCertificate.Dispose();
+            }
         }
     }
 
@@ -93,7 +118,7 @@ public sealed class LocalApiSecurityService
 
     public string BuildHttpsBaseUrl(string? localApiBaseUrl)
     {
-        if (!TryCreateBaseUri(localApiBaseUrl, out var baseUri))
+        if (!LanAddressResolver.TryCreateBaseUri(localApiBaseUrl, out var baseUri))
         {
             return string.Empty;
         }
@@ -101,6 +126,7 @@ public sealed class LocalApiSecurityService
         var builder = new UriBuilder(baseUri)
         {
             Scheme = Uri.UriSchemeHttps,
+            Host = LanAddressResolver.ResolveHost(baseUri.Host),
             Port = HttpsPort,
         };
 
@@ -113,49 +139,6 @@ public sealed class LocalApiSecurityService
         await ExecutePrivilegedCommandAsync($"iptables -C INPUT -p tcp --dport {HttpsPort} -j ACCEPT || iptables -I INPUT 1 -p tcp --dport {HttpsPort} -j ACCEPT", cancellationToken);
         await ExecutePrivilegedCommandAsync($"ip6tables -C INPUT -p tcp --dport {HttpPort} -j ACCEPT || ip6tables -I INPUT 1 -p tcp --dport {HttpPort} -j ACCEPT", cancellationToken);
         await ExecutePrivilegedCommandAsync($"ip6tables -C INPUT -p tcp --dport {HttpsPort} -j ACCEPT || ip6tables -I INPUT 1 -p tcp --dport {HttpsPort} -j ACCEPT", cancellationToken);
-    }
-
-    private static IEnumerable<IPAddress> GetLocalIpAddresses()
-    {
-        foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            if (networkInterface.OperationalStatus != OperationalStatus.Up)
-            {
-                continue;
-            }
-
-            IPInterfaceProperties? properties;
-            try
-            {
-                properties = networkInterface.GetIPProperties();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var unicastAddress in properties.UnicastAddresses)
-            {
-                yield return unicastAddress.Address;
-            }
-        }
-    }
-
-    private static bool TryCreateBaseUri(string? value, out Uri baseUri)
-    {
-        var normalized = value?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            baseUri = default!;
-            return false;
-        }
-
-        if (!normalized.Contains("://", StringComparison.Ordinal))
-        {
-            normalized = $"http://{normalized}";
-        }
-
-        return Uri.TryCreate(normalized, UriKind.Absolute, out baseUri);
     }
 
     private static string NormalizeThumbprint(string? value) =>

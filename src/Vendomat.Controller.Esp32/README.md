@@ -76,9 +76,17 @@ Varianta practica:
 
 ### Update OTA
 
+`ExpectedSha256` (64 caractere hex, SHA-256 al binarului) este **obligatoriu**. Firmware-ul
+descarca imaginea, calculeaza SHA-256 pe flux si **respinge** flash-ul daca nu se potriveste
+(`Sha256Mismatch`), deci un download alterat sau un atac man-in-the-middle pe HTTP este blocat.
+Hash-ul vine pe legatura seriala de incredere dinspre tableta.
+
 ```json
-{"Type":20,"Url":"http://192.168.43.1:1326/firmware/esp32.bin","WifiSsid":"VendomatHotspot","WifiPassword":"parola123","ExpectedMd5":""}
+{"Type":20,"Url":"http://192.168.43.1:1326/firmware/esp32.bin","WifiSsid":"VendomatHotspot","WifiPassword":"<setat-la-runtime>","ExpectedSha256":"<sha256-hex-64>"}
 ```
+
+SHA-256 al binarului se obtine cu, de exemplu: `sha256sum esp32.bin` (Linux) sau
+`Get-FileHash esp32.bin -Algorithm SHA256` (PowerShell).
 
 ## Flux recomandat pentru update din tableta Android
 
@@ -92,9 +100,9 @@ Pentru flash serial complet ar trebui si control pe liniile de boot `GPIO0` si `
 
 ## Observatii hardware
 
-- `PumpRelayPin` este setat implicit pe `25`
-- `FlowPulsePin` este setat implicit pe `23`
+- `PumpRelayPin` este setat implicit pe `32`
+- `FlowPulsePin` este setat implicit pe `25`
 - `DhtPin` este setat implicit pe `27`
 - `RXD2` este `16` pentru receptie de la tableta
 - `TXD2` este `17` pentru trimitere catre tableta
-- daca releul tau este active-low, schimba `PumpRelayActiveHigh` in `false`
+- `PumpRelayActiveHigh` este `false` pentru modul de releu active-low
