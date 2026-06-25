@@ -11,6 +11,8 @@ namespace Vendomat.Controller.Cloud.Data;
 
 public sealed class CloudStore(IHostEnvironment environment, IConfiguration configuration)
 {
+    private const int DefaultMachineOfflineAfterSeconds = 45;
+
     public sealed class CloudOperationalHealth
     {
         public string Status { get; set; } = "online";
@@ -29,6 +31,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
     private readonly ConcurrentDictionary<Guid, PendingPairingSecret> _pendingPairingSecrets = new();
     private readonly string _connectionString = BuildConnectionString(environment, configuration);
     private readonly bool _allowMachineAutoRegister = ResolveAllowMachineAutoRegister(environment, configuration);
+    private readonly TimeSpan _machineOfflineAfter = ResolveMachineOfflineAfter(configuration);
     private bool _isInitialized;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -165,7 +168,8 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
             settingsJson: null,
             dashboardJson: null,
             lastSeenUtc: null,
-            cancellationToken);
+            cancellationToken,
+            allowSelfRegister: true);
 
         await DeleteExpiredPairingsAsync(connection, transaction, cancellationToken);
 
@@ -211,7 +215,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
             JsonSerializer.Serialize(snapshot, _jsonOptions),
             JsonSerializer.Serialize(snapshot.Settings, _jsonOptions),
             dashboard is null ? null : JsonSerializer.Serialize(dashboard, _jsonOptions),
-            snapshot.GeneratedAtUtc == default ? DateTimeOffset.UtcNow : snapshot.GeneratedAtUtc,
+            DateTimeOffset.UtcNow,
             cancellationToken);
 
         await DeleteExpiredPairingsAsync(connection, transaction, cancellationToken);
@@ -250,7 +254,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
             JsonSerializer.Serialize(snapshot, _jsonOptions),
             JsonSerializer.Serialize(snapshot.Settings, _jsonOptions),
             dashboard is null ? null : JsonSerializer.Serialize(dashboard, _jsonOptions),
-            snapshot.GeneratedAtUtc == default ? DateTimeOffset.UtcNow : snapshot.GeneratedAtUtc,
+            DateTimeOffset.UtcNow,
             cancellationToken);
 
         var hasActiveWatcher = await HasActiveWatcherAsync(connection, transaction, request.MachineId, cancellationToken);
@@ -464,6 +468,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
     public async Task<MachineStatusSnapshot> GetStatusAsync(string companionAccessToken, CancellationToken cancellationToken = default)
     {
         var machine = await ResolveMachineByCompanionTokenAsync(companionAccessToken, cancellationToken);
+        EnsureMachineIsOnline(machine);
         if (string.IsNullOrWhiteSpace(machine.LastStatusJson))
         {
             throw new InvalidOperationException("No status snapshot has been synced from the machine yet.");
@@ -501,6 +506,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
     public async Task<MachineDashboardSnapshot> GetDashboardAsync(string companionAccessToken, CancellationToken cancellationToken = default)
     {
         var machine = await ResolveMachineByCompanionTokenAsync(companionAccessToken, cancellationToken);
+        EnsureMachineIsOnline(machine);
         if (string.IsNullOrWhiteSpace(machine.LastDashboardJson))
         {
             throw new InvalidOperationException("No dashboard snapshot has been synced from the machine yet.");
@@ -782,6 +788,7 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
                 m.LastStatusJson,
                 m.LastSettingsJson,
                 m.LastDashboardJson,
+                m.LastSeenUtc,
                 c.CompanionAccessToken
             FROM companion_sessions c
             INNER JOIN machines m ON m.MachineId = c.MachineId
@@ -811,7 +818,8 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
                 reader.GetString(reader.GetOrdinal("CloudApiBaseUrl")),
                 reader.GetString(reader.GetOrdinal("LastStatusJson")),
                 reader.GetString(reader.GetOrdinal("LastSettingsJson")),
-                reader.GetString(reader.GetOrdinal("LastDashboardJson")));
+                reader.GetString(reader.GetOrdinal("LastDashboardJson")),
+                ParseNullableDateTimeOffset(reader.GetString(reader.GetOrdinal("LastSeenUtc"))));
             break;
         }
 
@@ -852,9 +860,10 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         string? settingsJson,
         string? dashboardJson,
         DateTimeOffset? lastSeenUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowSelfRegister = false)
     {
-        await EnsureMachineTokenAsync(connection, transaction, machineId, machineToken, cancellationToken, allowCreate: true);
+        await EnsureMachineTokenAsync(connection, transaction, machineId, machineToken, cancellationToken, allowCreate: true, allowSelfRegister: allowSelfRegister);
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -906,7 +915,8 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         Guid machineId,
         string machineToken,
         CancellationToken cancellationToken,
-        bool allowCreate = false)
+        bool allowCreate = false,
+        bool allowSelfRegister = false)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -916,7 +926,10 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
 
         if (result is null || result is DBNull)
         {
-            if (allowCreate && _allowMachineAutoRegister)
+            // Trust-on-first-use: the pairing-publish path may register a brand-new machine
+            // even when auto-registration is disabled, otherwise a machine could never pair.
+            // Ongoing paths (ws tunnel, sync) stay strict and require an existing registration.
+            if (allowCreate && (_allowMachineAutoRegister || allowSelfRegister))
             {
                 return;
             }
@@ -1242,6 +1255,26 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         return environment.IsDevelopment();
     }
 
+    private static TimeSpan ResolveMachineOfflineAfter(IConfiguration configuration)
+    {
+        var configured = configuration["Cloud:MachineOfflineAfterSeconds"];
+        if (int.TryParse(configured, out var seconds) && seconds >= 5)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        return TimeSpan.FromSeconds(DefaultMachineOfflineAfterSeconds);
+    }
+
+    private void EnsureMachineIsOnline(ResolvedMachine machine)
+    {
+        if (machine.LastSeenUtc is not { } lastSeenUtc
+            || DateTimeOffset.UtcNow - lastSeenUtc.ToUniversalTime() > _machineOfflineAfter)
+        {
+            throw new InvalidOperationException("The machine is offline because it has not synced with the cloud recently.");
+        }
+    }
+
     private static Guid ParseGuid(string value) =>
         Guid.TryParse(value, out var guid)
             ? guid
@@ -1251,6 +1284,11 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         DateTimeOffset.TryParse(value, out var dateTimeOffset)
             ? dateTimeOffset
             : DateTimeOffset.UtcNow;
+
+    private static DateTimeOffset? ParseNullableDateTimeOffset(string value) =>
+        DateTimeOffset.TryParse(value, out var dateTimeOffset)
+            ? dateTimeOffset
+            : null;
 
     private static string ComputePayloadHash(string payloadJson)
     {
@@ -1276,7 +1314,8 @@ public sealed class CloudStore(IHostEnvironment environment, IConfiguration conf
         string CloudApiBaseUrl,
         string LastStatusJson,
         string LastSettingsJson,
-        string LastDashboardJson);
+        string LastDashboardJson,
+        DateTimeOffset? LastSeenUtc);
 
     private sealed record PendingPairingSecret(string CompanionAccessToken, DateTimeOffset ExpiresAtUtc);
 

@@ -144,6 +144,7 @@ public sealed class AppLanguageStrings
     public string SettingsAdminPasscodeDefaultRejectedStatus { get; set; } = string.Empty;
     public string SettingsAdminPasscodeMismatchStatus { get; set; } = string.Empty;
     public string SettingsQrReadyStatus { get; set; } = string.Empty;
+    public string SettingsQrCloudFailedStatus { get; set; } = string.Empty;
     public string SettingsContinuousCleaningStatus { get; set; } = string.Empty;
     public string SettingsPulsedCleaningStatus { get; set; } = string.Empty;
     public string SettingsPrimingStatusFormat { get; set; } = string.Empty;

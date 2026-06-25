@@ -339,10 +339,21 @@ public partial class SettingsPageViewModel(
         }
 
         var payload = await machineRuntimeService.GeneratePairingAsync();
+        var cloudPairingFailed = false;
         if (!string.IsNullOrWhiteSpace(normalizedCloudApiBaseUrl))
         {
             payload.CloudApiBaseUrl = normalizedCloudApiBaseUrl;
-            await cloudBridgeService.PublishPairingAsync(payload);
+            try
+            {
+                await cloudBridgeService.PublishPairingAsync(payload);
+            }
+            catch (Exception ex)
+            {
+                // Cloud pairing is best-effort: a cloud failure must not crash the app or
+                // block local/public pairing. Still render the QR and surface the failure.
+                cloudPairingFailed = true;
+                System.Diagnostics.Debug.WriteLine($"Cloud pairing publish failed: {ex.Message}");
+            }
         }
 
         var payloadJson = payload.ToQrPayloadJson();
@@ -361,7 +372,9 @@ public partial class SettingsPageViewModel(
                 ? payload.LocalApiBaseUrl
                 : payload.PublicApiBaseUrl;
         IsPairingPopupVisible = true;
-        SetStatus(nameof(AppLanguageStrings.SettingsQrReadyStatus));
+        SetStatus(cloudPairingFailed
+            ? nameof(AppLanguageStrings.SettingsQrCloudFailedStatus)
+            : nameof(AppLanguageStrings.SettingsQrReadyStatus));
     }
 
     [RelayCommand]

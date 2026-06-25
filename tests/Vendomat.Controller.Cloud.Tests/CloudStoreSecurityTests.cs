@@ -83,6 +83,77 @@ public sealed class CloudStoreSecurityTests
     }
 
     [Fact]
+    public async Task PairingSelfRegistersMachineWhenAutoRegisterDisabled()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"vendomat-cloud-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        var databasePath = Path.Combine(tempDirectory, "cloud.db");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cloud:DatabasePath"] = databasePath,
+                ["Cloud:AllowMachineAutoRegister"] = "false",
+            })
+            .Build();
+
+        var store = new CloudStore(new TestHostEnvironment(tempDirectory), configuration);
+        var machineId = Guid.NewGuid();
+        const string machineToken = "MACHINE_TOKEN_0123456789";
+        const string companionToken = "COMPANION_TOKEN_0123456789";
+
+        // A brand-new machine has no row yet; publishing its pairing must self-register it
+        // even though auto-registration is disabled, otherwise the QR flow can never pair.
+        await store.UpsertPairingSessionAsync(new CloudPairingUpsertRequest
+        {
+            MachineId = machineId,
+            MachineName = "test",
+            MachineToken = machineToken,
+            CompanionAccessToken = companionToken,
+            CloudApiBaseUrl = "https://cloud.example.test",
+            PairingCode = "123456",
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(5),
+        });
+
+        var claim = await store.ClaimPairingAsync(new PairingClaimRequest
+        {
+            MachineId = machineId,
+            PairingCode = "123456",
+        }, "https://cloud.example.test");
+
+        Assert.Equal(companionToken, claim.CompanionAccessToken);
+    }
+
+    [Fact]
+    public async Task SyncRejectsUnregisteredMachineWhenAutoRegisterDisabled()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"vendomat-cloud-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        var databasePath = Path.Combine(tempDirectory, "cloud.db");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cloud:DatabasePath"] = databasePath,
+                ["Cloud:AllowMachineAutoRegister"] = "false",
+            })
+            .Build();
+
+        var store = new CloudStore(new TestHostEnvironment(tempDirectory), configuration);
+
+        // Only the pairing-publish path may self-register. Sync stays strict so an
+        // unknown machine cannot create an identity by syncing.
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.SyncMachineAsync(new CloudMachineSyncRequest
+            {
+                MachineId = Guid.NewGuid(),
+                MachineName = "test",
+                MachineToken = "MACHINE_TOKEN_0123456789",
+                CompanionAccessToken = "COMPANION_TOKEN_0123456789",
+                Snapshot = new MachineStatusSnapshot(),
+            }));
+        Assert.Contains("not registered", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PairingRateLimiterLocksAfterRepeatedFailures()
     {
         var limiter = new PairingClaimRateLimiter();
@@ -230,6 +301,95 @@ public sealed class CloudStoreSecurityTests
         var revokedCount = await store.RevokeCompanionSessionsAsync(machineId, machineToken, session.CompanionTokenPrefix);
         Assert.Equal(1, revokedCount);
         Assert.Empty(await store.GetCompanionSessionsAsync(machineId, machineToken));
+    }
+
+    [Fact]
+    public async Task CachedStatusExpiresUsingCloudReceiptTime()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"vendomat-cloud-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        var databasePath = Path.Combine(tempDirectory, "cloud.db");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cloud:DatabasePath"] = databasePath,
+                ["Cloud:MachineOfflineAfterSeconds"] = "30",
+            })
+            .Build();
+
+        var store = new CloudStore(new TestHostEnvironment(tempDirectory), configuration);
+        var machineId = Guid.NewGuid();
+        const string machineToken = "MACHINE_TOKEN_0123456789";
+        const string companionToken = "COMPANION_TOKEN_0123456789";
+
+        await store.SyncMachineAsync(new CloudMachineSyncRequest
+        {
+            MachineId = machineId,
+            MachineName = "test",
+            MachineToken = machineToken,
+            CompanionAccessToken = companionToken,
+            Snapshot = new MachineStatusSnapshot
+            {
+                Settings = new MachineSettings
+                {
+                    MachineId = machineId,
+                    MachineName = "test",
+                },
+                GeneratedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            },
+            Dashboard = new MachineDashboardSnapshot
+            {
+                Status = new MachineStatusSnapshot
+                {
+                    Settings = new MachineSettings
+                    {
+                        MachineId = machineId,
+                        MachineName = "test",
+                    },
+                },
+            },
+        });
+
+        await store.UpsertPairingSessionAsync(new CloudPairingUpsertRequest
+        {
+            MachineId = machineId,
+            MachineName = "test",
+            MachineToken = machineToken,
+            CompanionAccessToken = companionToken,
+            CloudApiBaseUrl = "https://cloud.example.test",
+            PairingCode = "123456",
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(5),
+        });
+
+        await store.ClaimPairingAsync(new PairingClaimRequest
+        {
+            MachineId = machineId,
+            PairingCode = "123456",
+        }, "https://cloud.example.test");
+
+        var freshStatus = await store.GetStatusAsync(companionToken);
+        Assert.Equal(machineId, freshStatus.Settings.MachineId);
+
+        await using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+        }.ToString()))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "UPDATE machines SET LastSeenUtc = @LastSeenUtc WHERE MachineId = @MachineId;";
+            command.Parameters.AddWithValue("@LastSeenUtc", DateTimeOffset.UtcNow.AddMinutes(-5).UtcDateTime.ToString("O"));
+            command.Parameters.AddWithValue("@MachineId", machineId.ToString("N"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var statusError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.GetStatusAsync(companionToken));
+        Assert.Contains("offline", statusError.Message, StringComparison.OrdinalIgnoreCase);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.GetDashboardAsync(companionToken));
     }
 
     private sealed class TestHostEnvironment(string contentRootPath) : IHostEnvironment
